@@ -24,9 +24,9 @@ banner = """
 /_/  /_/  \__/_.__/\__/_/_/_/\__/\___/
 """
 print(banner)
-#time.sleep(1)
+time.sleep(1)
 print("\nThere is no patch for passive recon. ;)")
-#time.sleep(3)
+time.sleep(3)
 
 # Define some keyboard input listeners to provide the user with dynamic updates - This doesn't appear to work well with xorg.
 #def on_press(key):
@@ -81,10 +81,15 @@ knownnets = defaultdict(set)
 
 # Define a data dictionary for external hosts based upon the internet hosts the internal hosts connect to.
 externalhosts = defaultdict(set)
-networkegresspermitted = 0 
+tcpnetworkegresspermitted = 0
+udpnetworkegresspermitted = 0
+icmpnetworkegresspermitted = 0
 
 # Define a data dictionary for SMB Mailslot Browse intelligence using the host IP as the key
 mailslotbrowser = defaultdict(set)
+
+# Define a variable to control output of HSRP traffic - This is temporary until this is more built out.
+HSRPnotification = 0
 
 # Function to detect the protcol used within the packet to steer accordingly.
 def inspectproto(header, data):
@@ -117,6 +122,54 @@ def inspectproto(header, data):
         #print("The protocol number is %s.") % ( protocolnumber)
         if protocolnumber == 1:
             #print("\nThis is an ICMP packet.")
+            #print ethernet_packet.child().child().ICMP_ALTHOSTADDR
+            #print ethernet_packet.child().child().ICMP_ECHO
+            #print ethernet_packet.child().child().ICMP_ECHOREPLY
+            #print ethernet_packet.child().child().ICMP_IREQ
+            #print ethernet_packet.child().child().ICMP_IREQREPLY
+            #print ethernet_packet.child().child().ICMP_MASKREPLY
+            #print ethernet_packet.child().child().ICMP_MASKREQ
+            #print ethernet_packet.child().child().ICMP_PARAMPROB
+            #print ethernet_packet.child().child().ICMP_PARAMPROB_ERRATPTR
+            #print ethernet_packet.child().child().ICMP_PARAMPROB_LENGTH
+            #print ethernet_packet.child().child().ICMP_PARAMPROB_OPTABSENT
+            #print ethernet_packet.child().child().ICMP_REDIRECT
+            #print ethernet_packet.child().child().ICMP_REDIRECT_HOST
+            #print ethernet_packet.child().child().ICMP_REDIRECT_NET
+            #print ethernet_packet.child().child().ICMP_REDIRECT_TOSHOST
+            #print ethernet_packet.child().child().ICMP_REDIRECT_TOSNET
+            #print ethernet_packet.child().child().ICMP_ROUTERADVERT
+            #print ethernet_packet.child().child().ICMP_ROUTERSOLICIT
+            #print ethernet_packet.child().child().ICMP_SOURCEQUENCH
+            #print ethernet_packet.child().child().ICMP_TIMXCEED
+            #print ethernet_packet.child().child().ICMP_TIMXCEED_INTRANS
+            #print ethernet_packet.child().child().ICMP_TIMXCEED_REASS
+            #print ethernet_packet.child().child().ICMP_TSTAMP
+            #print ethernet_packet.child().child().ICMP_TSTAMPREPLY
+            #print ethernet_packet.child().child().ICMP_UNREACH
+            #print ethernet_packet.child().child().ICMP_UNREACH_FILTERPROHIB
+            #print ethernet_packet.child().child().ICMP_UNREACH_HOST
+            #print ethernet_packet.child().child().ICMP_UNREACH_HOST_PRECEDENCE
+            #print ethernet_packet.child().child().ICMP_UNREACH_HOST_PROHIB
+            #print ethernet_packet.child().child().ICMP_UNREACH_HOST_UNKNOWN
+            #print ethernet_packet.child().child().ICMP_UNREACH_ISOLATED
+            #print ethernet_packet.child().child().ICMP_UNREACH_NEEDFRAG
+            #print ethernet_packet.child().child().ICMP_UNREACH_NET
+            #print ethernet_packet.child().child().ICMP_UNREACH_NET_PROHIB
+            #print ethernet_packet.child().child().ICMP_UNREACH_NET_UNKNOWN
+            #print ethernet_packet.child().child().ICMP_UNREACH_PORT
+            #print ethernet_packet.child().child().ICMP_UNREACH_PRECEDENCE_CUTOFF
+            #print ethernet_packet.child().child().ICMP_UNREACH_PROTOCOL
+            #print ethernet_packet.child().child().ICMP_UNREACH_SRCFAIL
+            #print ethernet_packet.child().child().ICMP_UNREACH_TOSHOST
+            #print ethernet_packet.child().child().ICMP_UNREACH_TOSNET
+            #print ethernet_packet.child().child().isQuery()
+            #print ethernet_packet.child().child().isDestinationUnreachable()
+            #print ethernet_packet.child().child().isHostUnreachable()
+            #print ethernet_packet.child().child().isProtocolUnreachable
+            #print ethernet_packet.child().child().get_icmp_type()
+            #print("\nThis is the endof of the header.")
+            icmpdiscovery(header,data)
             return
         elif protocolnumber == 4:
             #print("\nThis is an IP packet.")
@@ -170,6 +223,125 @@ def inspectproto(header, data):
             return
         #pdb.set_trace()
         #sniff.next
+
+# Function designed to sniff out intel tied to ICMP traffic
+def icmpdiscovery(header,data):
+        #print("\nStart of the icmpdiscovery method.\n")
+	ethernet_packet = decoder.decode(data)
+        protocolnumber = decoder.decode(data).child().child().protocol
+        if protocolnumber != 1:
+            return
+        ip_hdr = ethernet_packet.child()
+        source_ip = ip_hdr.get_ip_src()
+        dest_ip = ip_hdr.get_ip_dst()
+        icmp_hdr = ethernet_packet.child().child()
+        unknownsourcenetwork = 0
+        unknowndestnetwork = 0
+        unknownexternalhost = 0
+        hostexists = 0
+
+        # Work to determine if this is an icmp echo or echo reply. This is important, as it will allow us to determine if ICMP is permitted egress for C2 uses.
+        if ( icmp_hdr.get_type_name(icmp_hdr.get_icmp_type()) == "ECHO" ): 
+            # For each host listed as a key in our data dictionary, compare the actual host to the key. If it matches, make note of it by setting hostexists to '1'
+            for host in tcpintelligence.keys():
+                if source_ip == host:
+                    hostexists = 1
+            for host in udpintelligence.keys():
+                if source_ip == host:
+                    hostexists = 1
+            for host in icmpintelligence.keys():
+                if source_ip == host:
+                    hostexists = 1
+            if ( hostexists == 0 ):
+                print("\n-=-ICMP Recon-=-\nIdentified a host through ICMP(%s): %s") % ( icmp_hdr.get_type_name(icmp_hdr.get_icmp_type()), source_ip )
+                icmpintelligence[source_ip].update(source_ip)
+                #tcpintelligence[source_ip].add()
+                #udpintelligence[source_ip].add()
+
+
+            # Look to see if the IP address appears to belong to a set of known nets. If not alert the user of the known net and update the knownnets datadictionary - there is a bug here - I don't manage IPv6 properly yet.
+            rfc1918addressregex = re.compile('^(127\.)|(192\.168\.)|(10\.)|(172\.1[6-9]\.)|(172\.2[0-9]\.)|(172\.3[0-1]\.)')#  Add this when IPv6 is ready: |(::1$)|([fF][cCdD])')
+            sourcematch = rfc1918addressregex.match(source_ip)
+            #destmatch = rfc1918addressregex.match(dest_ip)
+            if sourcematch:# or destmatch:
+                source_ip_octets = source_ip.split('.')
+                source_network = source_ip_octets[0] + '.' + source_ip_octets[1] + '.' + source_ip_octets [2] + '.1/24'
+                #dest_ip_octets = dest_ip.split('.')
+                #dest_network = dest_ip_octets[0] + '.' + dest_ip_octets[1] + '.' + dest_ip_octets[2] + '.1/24'
+                for known_network in knownnets.keys():
+                    if source_network == known_network:
+                        unknownsourcenetwork = 1
+                #if destmatch:
+                    #for known_network in knownnets.keys():
+                        #if dest_network == known_network:
+                            #unknowndestnetwork = 1
+                if unknownsourcenetwork == 0 and sourcematch:
+                    print ("\n-=-Network Recon-=-\nA new network has been identified: %s") % (source_network)
+                    knownnets[source_network].add(source_ip)
+                #if unknowndestnetwork == 0 and destmatch:
+                    #if source_network != dest_network:
+                        #print ("\n-=-Network Recon-=-\nA new network has been identified: %s") % (dest_network)
+                        #knownnets[dest_network].add(dest_ip)
+
+        if ( icmp_hdr.get_type_name(icmp_hdr.get_icmp_type()) == "ECHOREPLY" ): 
+            # For each host listed as a key in our data dictionary, compare the actual host to the key. If it matches, make note of it by setting hostexists to '1'
+            for host in tcpintelligence.keys():
+                if source_ip == host:
+                    hostexists = 1
+            for host in udpintelligence.keys():
+                if source_ip == host:
+                    hostexists = 1
+            for host in icmpintelligence.keys():
+                if source_ip == host:
+                    hostexists = 1
+            rfc1918addressregex = re.compile('^(127\.)|(192\.168\.)|(10\.)|(172\.1[6-9]\.)|(172\.2[0-9]\.)|(172\.3[0-1]\.)')#  Add this when IPv6 is ready: |(::1$)|([fF][cCdD])')
+            sourcematch = rfc1918addressregex.match(source_ip)
+            if ( hostexists == 0 and sourcematch):
+                print("\n-=-ICMP Recon-=-\nIdentified a host through ICMP(%s): %s") % ( icmp_hdr.get_type_name(icmp_hdr.get_icmp_type()), source_ip)
+                icmpintelligence[source_ip].update(source_ip)
+                #tcpintelligence[source_ip].add()
+                #udpintelligence[source_ip].add()
+
+
+            # Look to see if the IP address appears to belong to a set of known nets. If not alert the user of the known net and update the knownnets datadictionary - there is a bug here - I don't manage IPv6 properly yet.
+            rfc1918addressregex = re.compile('^(127\.)|(192\.168\.)|(10\.)|(172\.1[6-9]\.)|(172\.2[0-9]\.)|(172\.3[0-1]\.)')#  Add this when IPv6 is ready: |(::1$)|([fF][cCdD])')
+            sourcematch = rfc1918addressregex.match(source_ip)
+            destmatch = rfc1918addressregex.match(dest_ip)
+            if sourcematch:#destmatch:
+                source_ip_octets = source_ip.split('.')
+                source_network = source_ip_octets[0] + '.' + source_ip_octets[1] + '.' + source_ip_octets [2] + '.1/24'
+                #dest_ip_octets = dest_ip.split('.')
+                #dest_network = dest_ip_octets[0] + '.' + dest_ip_octets[1] + '.' + dest_ip_octets[2] + '.1/24'
+                #if sourcematch:
+                for known_network in knownnets.keys():
+                    if source_network == known_network:
+                        unknownsourcenetwork = 1
+                #for known_network in knownnets.keys():
+                    #if dest_network == known_network:
+                        #unknowndestnetwork = 1
+                if unknownsourcenetwork == 0 and sourcematch:
+                    print ("\n-=-Network Recon-=-\nA new network has been identified: %s") % (source_network)
+                    knownnets[source_network].add(source_ip)
+                #if unknowndestnetwork == 0 and destmatch:
+                    #if source_network != dest_network:
+                        #print ("\n-=-Network Recon-=-\nA new network has been identified: %s") % (dest_network)
+                        #knownnets[dest_network].add(dest_ip)
+
+            # If a host does not match an RFC1918 address that an RFC1918 address is talking to note the external host and the internal host permitted to talk to it and notify the user about the permitted connection
+            if not sourcematch and destmatch:
+                global icmpnetworkegresspermitted
+                if icmpnetworkegresspermitted == 0:
+                    print ("\n-=-Egress Recon-=-\nNetwork egress detected! Internal hosts are permitted to ping the internet.")
+                    icmpnetworkegresspermitted = 1
+                #for externalhost in externalhosts.keys():
+                #    if source_ip == externalhost:
+                #        unknownexternalhost = 1
+                #if unknownexternalhost == 0 and icmpnetworkegresspermitted == 1:
+                #    externalhosts[source_ip].add(dest_ip)
+                #    print("\n-=-Egress Recon Update-=-\n%s is permitted to connect to %s on UDP port %s.") % (dest_ip, source_ip, udp_source_port)
+
+
+        #print("\nEnd of the icmpdiscovery method.\n")
 
 # Function designed to sniff out intel tied to generic UDP intelligence such as SMB and SNMP traffic
 def udpdiscovery(header,data):
@@ -230,18 +402,18 @@ def udpdiscovery(header,data):
 
         # If a host does not match an RFC1918 address that an RFC1918 address is talking to note the external host and the internal host permitted to talk to it and notify the user about the permitted connection
         if not sourcematch and destmatch:
-            global networkegresspermitted
-            if networkegresspermitted == 0:
-                print ("\n-=-Egress Recon-=-\nNetwork egress detected! Internal hosts are permitted to connect to the internet.")
-                networkegresspermitted = 1
+            global udpnetworkegresspermitted
+            if udpnetworkegresspermitted == 0:
+                print ("\n-=-Egress Recon-=-\nNetwork egress detected! Internal hosts are permitted to connect to the internet via UDP.")
+                udpnetworkegresspermitted = 1
             for externalhost in externalhosts.keys():
                 if source_ip == externalhost:
                         unknownexternalhost = 1
-            if unknownexternalhost == 0 and networkegresspermitted == 1:
+            if unknownexternalhost == 0 and udpnetworkegresspermitted == 1:
                 externalhosts[source_ip].add(dest_ip)
                 print("\n-=-Egress Recon Update-=-\n%s is permitted to connect to %s on UDP port %s.") % (dest_ip, source_ip, udp_source_port)
 
-	# For each host listed as a key in our host data dictionarys, compare the actual host to the key. If it matches, make not of it by setting hostexists to '1'
+	# For each host listed as a key in our host data dictionarys, compare the actual host to the key. If it matches, make note of it by setting hostexists to '1'
         if udp_source_port <= 8000:
             for host in udpintelligence.keys():
                 if source_ip == host:
@@ -271,7 +443,9 @@ def udpdiscovery(header,data):
             snmppacketfilterregex = re.compile('[a-zA-Z0-9.*].*(?=:)')# Regex to yank data before colon within snmp string data
             snmptempdata = snmppacketfilterregex.findall(tempdata)
             printable = set(string.printable)
+            print printable
             communitystring = filter(lambda x: x in printable, snmptempdata[0])
+            print communitystring
             communitystring = communitystring[2:]
             if communitystring in snmpstrings.keys():
                 for host in snmpstrings[string]:
@@ -304,9 +478,11 @@ def udpdiscovery(header,data):
                         mailslotbrowser[source_ip].add(mailslotstring[1])
 
         # Work support for HSRP protocol
-        if udp_source_port == 1985:
-            print('\n-=-Layer2/3 Recon-=-\nCisco HSRP is spoken here\n')
-            print('\n-=-Layer2/3 Recon-=-\nWe have an HSRP packet:\n%s\n\n\n\n%s\n\n\n\n%s\n') % ( ethernet_packet.child().child().child().get_buffer_as_string(), ethernet_packet.child().child().child(), data )
+        global HSRPnotification
+        if ( udp_source_port == 1985 and HSRPnotification != 1 ):
+            print('\n-=-Layer2/3 Recon-=-\nCisco HSRP is spoken here')
+            HSRPnotification = 1
+            #print('\n-=-Layer2/3 Recon-=-\nWe have an HSRP packet:\n%s\n\n\n\n%s\n\n\n\n%s\n') % ( ethernet_packet.child().child().child().get_buffer_as_string(), ethernet_packet.child().child().child(), data )
         #print("\nEnd of udpdiscovery method.\n")
         return
 
@@ -473,18 +649,18 @@ def synackdiscovery(header, data):
 
         # If a host does not match an RFC1918 address that an RFC1918 address is talking to note the external host and the internal host permitted to talk to it and notify the user about the permitted connection
         if not sourcematch and destmatch:
-            global networkegresspermitted
-            if networkegresspermitted == 0:
-                print ("\n-=-Egress Recon-=-\nNetwork egress detected! Internal hosts are permitted to connect to the internet.")
-                networkegresspermitted = 1
+            global tcpnetworkegresspermitted
+            if tcpnetworkegresspermitted == 0:
+                print ("\n-=-Egress Recon-=-\nNetwork egress detected! Internal hosts are permitted to connect to the internet via TCP.")
+                tcpnetworkegresspermitted = 1
             for externalhost in externalhosts.keys():
                 if source_ip == externalhost:
                         unknownexternalhost = 1
-            if unknownexternalhost == 0 and networkegresspermitted == 1:
+            if unknownexternalhost == 0 and tcpnetworkegresspermitted == 1:
                 externalhosts[source_ip].add(dest_ip)
                 print("\n-=-Egress Recon Update-=-\n%s is permitted to connect to %s on TCP port %s.") % (dest_ip, source_ip, source_port)
 
-	# For each host listed as a key in our data dictionary, compare the actual host to the key. If it matches, make not of it by setting hostexists to '1'
+	# For each host listed as a key in our data dictionary, compare the actual host to the key. If it matches, make note of it by setting hostexists to '1'
         for host in tcpintelligence.keys():
             if source_ip == host:
                 hostexists = 1
@@ -553,7 +729,7 @@ def synackdiscovery(header, data):
 # Place the ethernet interface in promiscuous mode, capturing one packet at a time with a snaplen of 1500
 print("\nPlacing the interface in sniffing mode.")
 sniff = pcapy.open_live("eth0", 1500, 1, 100)
-#time.sleep(1)
+time.sleep(1)
 
 # Set a filter for data.
 sniff.setfilter('ip or arp or aarp')
@@ -561,7 +737,7 @@ sniff.setfilter('ip or arp or aarp')
 # Start the impact packet decoder
 print("\nWatching for relivant intelligence.\n")
 decoder = ImpactDecoder.EthDecoder()
-#time.sleep(1)
+time.sleep(1)
 
 #print(dir(sniff.loop))
 #print(dir(decoder))
