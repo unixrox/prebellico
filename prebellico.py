@@ -356,7 +356,6 @@ def udpdiscovery(header,data):
 	if ( udp_source_port == 1985 and HSRPnotification != 1 ):
 		print('\n-=-Layer2/3 Recon-=-\nCisco HSRP is spoken here')
 		HSRPnotification = 1
-		#print('\n-=-Layer2/3 Recon-=-\nWe have an HSRP packet:\n%s\n\n\n\n%s\n\n\n\n%s\n') % ( ethernet_packet.child().child().child().get_buffer_as_string(), ethernet_packet.child().child().child(), data )
 	#print("\nEnd of udpdiscovery method.\n")
 	return
 
