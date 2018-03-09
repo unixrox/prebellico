@@ -1,2 +1,2 @@
-# Prebellico
+# prebellico
 Passive internal reconnaissance tool
