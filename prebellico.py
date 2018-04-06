@@ -361,6 +361,7 @@ def udpdiscovery(header,data):
 	if ( udp_source_port == 1985 and HSRPnotification != 1 ):
 		print('\n-=-Layer2/3 Recon-=-\nCisco HSRP is spoken here')
 		HSRPnotification = 1
+		#print('\n-=-Layer2/3 Recon-=-\nWe have an HSRP packet:\n%s\n\n\n\n%s\n\n\n\n%s\n') % ( ethernet_packet.child().child().child().get_buffer_as_string(), ethernet_packet.child().child().child(), data )
 	#print("\nEnd of udpdiscovery method.\n")
 	return
 
@@ -411,10 +412,9 @@ def tcppushdiscovery(header,data):
 		    if dest_port == port:
 		        portexists = 1
                 if portexists == 0:
-                    print("\n-=-TCP Push discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( source_ip, source_port, dest_ip )
+                    print("\n-=-TCP Push discovery-=-\n%s appears to be talking to an open TCP port - %s:%s.") % ( source_ip, dest_ip, dest_port )
 		    tcpintelligence[source_ip].add(source_port)
 		    trustedintelligence[source_ip].add(dest_ip)
-                print("\n-=-TCP Push discovery-=-\n%s appears to be talking to an open TCP port - %s:%s.") % ( source_ip, dest_ip, dest_port )
 		tcpintelligence[dest_ip].add(dest_port)
 		trustedintelligence[dest_ip].add(source_ip)
                 return
