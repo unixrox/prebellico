@@ -70,6 +70,9 @@ mailslotbrowser = defaultdict(set)
 # Define a variable to control output of HSRP traffic - This is temporary until this is more built out.
 HSRPnotification = 0
 
+# Define a data dictionary for TCP ACK's designed to confirm server to client ACK's affiliated with SMB PSH/ACK requests using the host IP as the key
+tcppshack = defaultdict(set)
+
 # Function to detect the protcol used within the packet to steer accordingly.
 def inspectproto(header, data):
 
@@ -96,7 +99,9 @@ def inspectproto(header, data):
 		tcp_rst = ethernet_packet.child().child().get_RST()
 		tcp_urg = ethernet_packet.child().child().get_URG()
 		if ( tcp_syn == 1 and tcp_ack == 1 ):
-			synackdiscovery(header,data)
+		    synackdiscovery(header,data)
+                if ( tcp_psh == 1 and tcp_ack == 1 or tcp_ack == 1):
+                    tcppushdiscovery(header,data)
 		tcpdiscovery(header,data)
 		return
 	elif protocolnumber == 17:
@@ -140,7 +145,7 @@ def icmpdiscovery(header,data):
 	ethernet_packet = decoder.decode(data)
 	protocolnumber = decoder.decode(data).child().child().protocol
 	if protocolnumber != 1:
-		return
+    	    return
 	ip_hdr = ethernet_packet.child()
 	source_ip = ip_hdr.get_ip_src()
 	dest_ip = ip_hdr.get_ip_dst()
@@ -360,6 +365,70 @@ def udpdiscovery(header,data):
 	#print("\nEnd of udpdiscovery method.\n")
 	return
 
+# Function designed to sniff out intel tied to captured TCP PSH requests 
+def tcppushdiscovery(header,data):
+
+	#print("\nStart of tcppushdiscovery method.\n")
+	# Start to decode the packet and determine the protocol number. If not TCP, return as it does not apply here.
+	ethernet_packet = decoder.decode(data)
+	protocolnumber = decoder.decode(data).child().child().protocol
+	if protocolnumber != 6:
+		return 
+	# Extract relivant data from the ethernet packet
+	mac_hdr = ethernet_packet
+	ip_hdr = ethernet_packet.child()
+	tcp_hdr = ip_hdr.child()
+	source_ip = ip_hdr.get_ip_src()
+	source_port = tcp_hdr.get_th_sport()
+        dest_ip = ip_hdr.get_ip_dst()
+	dest_port = tcp_hdr.get_th_dport()
+
+        # Pull TCP flags to determine tcp session state so that we can determine what TCP method to call for intel. 
+	tcp_syn = ethernet_packet.child().child().get_SYN()
+	tcp_ack = ethernet_packet.child().child().get_ACK()
+	tcp_ece = ethernet_packet.child().child().get_ECE()
+	tcp_cwr = ethernet_packet.child().child().get_CWR()
+	tcp_fin = ethernet_packet.child().child().get_FIN()
+	tcp_psh = ethernet_packet.child().child().get_PSH()
+	tcp_rst = ethernet_packet.child().child().get_RST()
+	tcp_urg = ethernet_packet.child().child().get_URG()
+
+        if ( tcp_psh == 1 and tcp_ack == 1 ):
+            portexists = 0
+            #print("\n\nTCP PSH/ACK packet. Source port:%s Dest port:%s") % ( source_port, dest_port )
+            if ( source_port <= 1024 and dest_port > 1024 ):
+                # Using the source ip address as a key within the data dictionary, for each port listed see if it matches the source port captured witin the packet. If it is a match, set 'poretexists' to one to indicate we have seen this before.
+	        for port in tcpintelligence[source_ip]:
+		    if source_port == port:
+		        portexists = 1
+                if portexists == 0:
+                    print("\n-=-TCP Push discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( source_ip, source_port, dest_ip )
+		    tcpintelligence[source_ip].add(source_port)
+		    trustedintelligence[source_ip].add(dest_ip)
+                return
+            if ( source_port > 1024 and dest_port <= 1024 ):
+                # Using the source ip address as a key within the data dictionary, for each port listed see if it matches the source port captured witin the packet. If it is a match, set 'poretexists' to one to indicate we have seen this before.
+	        for port in tcpintelligence[dest_ip]:
+		    if dest_port == port:
+		        portexists = 1
+                if portexists == 0:
+                    print("\n-=-TCP Push discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( source_ip, source_port, dest_ip )
+		    tcpintelligence[source_ip].add(source_port)
+		    trustedintelligence[source_ip].add(dest_ip)
+                print("\n-=-TCP Push discovery-=-\n%s appears to be talking to an open TCP port - %s:%s.") % ( source_ip, dest_ip, dest_port )
+		tcpintelligence[dest_ip].add(dest_port)
+		trustedintelligence[dest_ip].add(source_ip)
+                return
+            if ( source_port > 1024 and dest_port > 1024 ):
+                print("\n-=-TCP Push discovery-=-\nThere appears to be a TCP based converstation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening TCP service.") % ( source_ip, source_port, dest_ip, dest_port )
+                #Need to work this algorithm a bit more but colon separated datadict values with a split comparison to the host might work. For now we just announce it and return
+                #source_ip_and_dest_port = 'source_ip' + ':' + 'dest_port'
+                #tcppshack[dest_ip].add(source_ip_adn_dest_port)
+                #tcppshack = defaultdict(set)
+                return
+        #print("\nEnd of tcppushdiscovery method.\n")
+
+
 # Function designed to sniff out intel tied to generic TCP intelligence such as predictable IPID numbers        
 def tcpdiscovery(header,data):
 
@@ -513,13 +582,13 @@ def synackdiscovery(header, data):
 		for trust in trustedintelligence[source_ip]:
 			print ("%s,") % ( trust ),
 		print("\n")
-	#with open('prebellico_output.txt', 'w') as outfile:
+	#with open('prebellico_output.csv', 'w') as outfile:
 		#json.dumps(tcpintelligence, outfile, sort_keys=True, indent=4)
 		#json.dumps(arpintelligence, outfile, sort_keys=True, indent=4)
 		#json.dumps(icmpintelligence, outfile, sort_keys=True, indent=4)
 		#json.dumps(trustedintelligence, outfile, sort_keys=True, indent=4)
 		#json.dumps(knownnets, outfile, sort_keys=True, indent=4)
-		#json.dumps(externalnets, outfile, sort_keys=True, indent=4)
+		#json.dumps(externalhosts, outfile, sort_keys=True, indent=4)
 		#json.dumps(, outfile, sort_keys=True, indent=4)
 
 	#with open('prebellico_output.txt', 'w') as outfile:
@@ -528,7 +597,7 @@ def synackdiscovery(header, data):
 		#outfile.write(pickle.dumps(icmpintelligence))
 		#outfile.write(pickle.dumps(trustedintelligence))
 		#outfile.write(pickle.dumps(knownnets))
-		#outfile.write(pickle.dumps(externalnets))
+		#outfile.write(pickle.dumps(externalhosts))
 
 	#print("\nEnd of synackdiscovery method.\n")
 	return
