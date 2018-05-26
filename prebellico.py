@@ -235,7 +235,7 @@ def udpdiscovery(header,data):
 	protocolnumber = decoder.decode(data).child().child().protocol
 	if protocolnumber != 17:
 		return 
-	# Extract relivant data from the ethernet packet
+	# Extract relevant data from the ethernet packet
 	mac_hdr = ethernet_packet
 	source_mac = mac_hdr.as_eth_addr(mac_hdr.get_ether_shost())
 	dest_mac = mac_hdr.as_eth_addr(mac_hdr.get_ether_dhost())
@@ -322,9 +322,9 @@ def udpdiscovery(header,data):
 		snmppacketfilterregex = re.compile('[a-zA-Z0-9.*].*(?=:)')# Regex to yank data before colon within snmp string data
 		snmptempdata = snmppacketfilterregex.findall(tempdata)
 		printable = set(string.printable)
-		print printable
+		#print printable
 		communitystring = filter(lambda x: x in printable, snmptempdata[0])
-		print communitystring
+		#print communitystring
 		communitystring = communitystring[2:]
 		if communitystring in snmpstrings.keys():
 			for host in snmpstrings[string]:
@@ -374,7 +374,7 @@ def tcppushdiscovery(header,data):
 	protocolnumber = decoder.decode(data).child().child().protocol
 	if protocolnumber != 6:
 		return 
-	# Extract relivant data from the ethernet packet
+	# Extract relevant data from the ethernet packet
 	mac_hdr = ethernet_packet
 	ip_hdr = ethernet_packet.child()
 	tcp_hdr = ip_hdr.child()
@@ -419,7 +419,7 @@ def tcppushdiscovery(header,data):
 		trustedintelligence[dest_ip].add(source_ip)
                 return
             if ( source_port > 1024 and dest_port > 1024 ):
-                print("\n-=-TCP Push discovery-=-\nThere appears to be a TCP based converstation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening TCP service.") % ( source_ip, source_port, dest_ip, dest_port )
+                print("\n-=-TCP Push discovery-=-\nThere appears to be a TCP based conversation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening TCP service.") % ( source_ip, source_port, dest_ip, dest_port )
                 #Need to work this algorithm a bit more but colon separated datadict values with a split comparison to the host might work. For now we just announce it and return
                 #source_ip_and_dest_port = 'source_ip' + ':' + 'dest_port'
                 #tcppshack[dest_ip].add(source_ip_adn_dest_port)
@@ -437,7 +437,7 @@ def tcpdiscovery(header,data):
 	protocolnumber = decoder.decode(data).child().child().protocol
 	if protocolnumber != 6:
 		return 
-	# Extract relivant data from the ethernet packet
+	# Extract relevant data from the ethernet packet
 	mac_hdr = ethernet_packet
 	ip_hdr = ethernet_packet.child()
 	tcp_hdr = ip_hdr.child()
@@ -483,7 +483,7 @@ def synackdiscovery(header, data):
 	if protocolnumber != 6:
 		return 
 
-	# Extract relivant data from the ethernet packet
+	# Extract relevant data from the ethernet packet
 	mac_hdr = ethernet_packet
 	source_mac = mac_hdr.as_eth_addr(mac_hdr.get_ether_shost())
 	dest_mac = mac_hdr.as_eth_addr(mac_hdr.get_ether_dhost())
@@ -611,7 +611,7 @@ time.sleep(1)
 sniff.setfilter('ip or arp or aarp')
 
 # Start the impact packet decoder
-print("\nWatching for relivant intelligence.\n")
+print("\nWatching for relevant intelligence.\n")
 decoder = ImpactDecoder.EthDecoder()
 time.sleep(1)
 
