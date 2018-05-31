@@ -2,6 +2,7 @@
 
 import pcapy
 import socket
+import netifaces
 import sys
 import re
 import time
@@ -9,6 +10,7 @@ import json
 import cPickle as pickle
 import sqlite3
 from impacket import ImpactDecoder
+from pcapy import findalldevs, open_live, PcapError
 from operator import itemgetter
 from itertools import groupby
 from collections import defaultdict
@@ -602,13 +604,54 @@ def synackdiscovery(header, data):
 	return
 	#pdb.set_trace()
 
+def getInterface():
+    # Grab a list of interfaces that pcap is able to listen on.
+    # The current user will be able to listen from all returned interfaces,
+    # using open_live to open them.
+    print '\nSearching the system for compatible devices.\n'
+    ifs = findalldevs()
+
+    # No interfaces available, abort.
+    if 0 == len(ifs):
+        print "You don't have enough permissions to open any interface on this system."
+        sys.exit(1)
+
+    # Only one interface available, use it.
+    elif 1 == len(ifs):
+        print 'Only one interface present, defaulting to it.'
+        return ifs[0]
+
+    # Ask the user to choose an interface from the list.
+    else:
+        print 'Numerous compatible interfaces identified:\n'
+        count = 0
+        for iface in ifs:
+            try:
+                t=open_live(iface, 1500, 0, 100)
+                if( t.getnet() != '0.0.0.0' and t.datalink() ==  pcapy.DLT_EN10MB ):
+                    print '%i - %s' % (count, iface)
+                    count += 1
+            except PcapError, e:
+                break
+    idx = int(raw_input('\nPlease select an interface you would like to use: '))
+
+    return ifs[idx]
+
+# Hunt for compatible devices and ask the user to select a compatible device - Note, this is a bit of a hack, but it works.
+dev = getInterface()
+
+# Obtain the selected interface IP to use as a filter, allowing us to pwn all the things without pissing in prebellico's data pool
+devip = netifaces.ifaddresses(dev)[2][0]['addr']
+
 # Place the ethernet interface in promiscuous mode, capturing one packet at a time with a snaplen of 1500
 print("\nPlacing the interface in sniffing mode.")
-sniff = pcapy.open_live("eth0", 1500, 1, 100)
+sniff = pcapy.open_live(dev, 1500, 1, 100)
+print "\nListening on %s: IP = %s, net=%s, mask=%s, linktype=%d" % (dev, devip, sniff.getnet(), sniff.getmask(), sniff.datalink())
 time.sleep(1)
 
 # Set a filter for data.
-sniff.setfilter('ip or arp or aarp')
+filter = ("ip or arp or aarp and not host %s") % ( devip )
+sniff.setfilter(filter)
 
 # Start the impact packet decoder
 print("\nWatching for relevant intelligence.\n")
