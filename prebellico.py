@@ -9,6 +9,7 @@ import time
 import json
 import cPickle as pickle
 import sqlite3
+import argparse
 from impacket import ImpactDecoder
 from pcapy import findalldevs, open_live, PcapError
 from operator import itemgetter
@@ -16,6 +17,18 @@ from itertools import groupby
 from collections import defaultdict
 import string
 import pdb
+
+# Parse arguments from user via argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('-i', '--inf', help='Specify the interface you want Prebellico to listen on. By default Prebellico will hunt for interfaces and ask the user to specify an interface if one is not provided here.')
+parser.add_argument('-l', '--log', help='Specify an output file. By default Prebellico will log to "prebellico.out" if a logfile is not specified.')
+parser.add_argument('-t', '--targets', help='Specify targets of interest.')
+parser.add_argument('-x', '--exclude', help='Specify a host to exclude from collection.')
+parser.add_argument('-p', '--semipassive', help='Perform semi-passive data collection after a specified period of time where no new passive intelligence is aquired.')
+parser.add_argument('-a', '--semiaggressive', help='Perform semi-aggressive data collection after a specififed period of time where no new passive or semi-passive intelligence is aquired.')
+parser.add_argument('-d', '--delay', help='Specify a period of time to wait for new intelligence before shifting to a new form of intelligence gathering.')
+
+args = vars(parser.parse_args())
 
 # Because everyone needs a cool banner
 banner = """
@@ -637,8 +650,10 @@ def getInterface():
 
     return ifs[idx]
 
-# Hunt for compatible devices and ask the user to select a compatible device - Note, this is a bit of a hack, but it works.
-dev = getInterface()
+# Determine if a device has been specififed. If not, hunt for compatible devices and ask the user to select a compatible device - Note, this is a bit of a hack, but it works.
+dev=args['inf']
+if dev is None:
+    dev = getInterface()
 
 # Obtain the selected interface IP to use as a filter, allowing us to pwn all the things without pissing in prebellico's data pool
 devip = netifaces.ifaddresses(dev)[2][0]['addr']
@@ -650,7 +665,7 @@ print "\nListening on %s: IP = %s, net=%s, mask=%s, linktype=%d" % (dev, devip, 
 time.sleep(1)
 
 # Set a filter for data.
-filter = ("ip or arp or aarp and not host %s") % ( devip )
+filter = ("ip or arp or aarp and not host 0.0.0.0 and not host %s") % ( devip )
 sniff.setfilter(filter)
 
 # Start the impact packet decoder
