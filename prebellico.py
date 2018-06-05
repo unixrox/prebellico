@@ -10,6 +10,9 @@ import json
 import cPickle as pickle
 import sqlite3
 import argparse
+import logging
+from datetime import datetime
+from optparse import OptionParser 
 from impacket import ImpactDecoder
 from pcapy import findalldevs, open_live, PcapError
 from operator import itemgetter
@@ -183,7 +186,7 @@ def icmpdiscovery(header,data):
 			if source_ip == host:
 				hostexists = 1
 		if ( hostexists == 0 ):
-			print("\n-=-ICMP Recon-=-\nIdentified a host through ICMP(%s): %s") % ( icmp_hdr.get_type_name(icmp_hdr.get_icmp_type()), source_ip )
+			logging.info(("\n-=-ICMP Recon-=-\nIdentified a host through ICMP(%s): %s") % ( icmp_hdr.get_type_name(icmp_hdr.get_icmp_type()), source_ip ))
 			icmpintelligence[source_ip].update(source_ip)
 			#tcpintelligence[source_ip].add()
 			#udpintelligence[source_ip].add()
@@ -199,7 +202,7 @@ def icmpdiscovery(header,data):
 				if source_network == known_network:
 					unknownsourcenetwork = 1
 			if unknownsourcenetwork == 0 and sourcematch:
-				print ("\n-=-Network Recon-=-\nA new network has been identified: %s") % (source_network)
+				logging.info(("\n-=-Network Recon-=-\nA new network has been identified: %s") % (source_network))
 				knownnets[source_network].add(source_ip)
 
 	if ( icmp_hdr.get_type_name(icmp_hdr.get_icmp_type()) == "ECHOREPLY" ): 
@@ -216,7 +219,7 @@ def icmpdiscovery(header,data):
 		rfc1918addressregex = re.compile('^(127\.)|(192\.168\.)|(10\.)|(172\.1[6-9]\.)|(172\.2[0-9]\.)|(172\.3[0-1]\.)')#  Add this when IPv6 is ready: |(::1$)|([fF][cCdD])')
 		sourcematch = rfc1918addressregex.match(source_ip)
 		if ( hostexists == 0 and sourcematch):
-			print("\n-=-ICMP Recon-=-\nIdentified a host through ICMP(%s): %s") % ( icmp_hdr.get_type_name(icmp_hdr.get_icmp_type()), source_ip)
+			logging.info(("\n-=-ICMP Recon-=-\nIdentified a host through ICMP(%s): %s") % ( icmp_hdr.get_type_name(icmp_hdr.get_icmp_type()), source_ip))
 			icmpintelligence[source_ip].update(source_ip)
 
 		# Look to see if the IP address appears to belong to a set of known nets. If not alert the user of the known net and update the knownnets datadictionary - there is a bug here - I don't manage IPv6 properly yet.
@@ -230,14 +233,14 @@ def icmpdiscovery(header,data):
 				if source_network == known_network:
 					unknownsourcenetwork = 1
 			if unknownsourcenetwork == 0 and sourcematch:
-				print ("\n-=-Network Recon-=-\nA new network has been identified: %s") % (source_network)
+				logging.info(("\n-=-Network Recon-=-\nA new network has been identified: %s") % (source_network))
 				knownnets[source_network].add(source_ip)
 
 		# If a host does not match an RFC1918 address that an RFC1918 address is talking to note the external host and the internal host permitted to talk to it and notify the user about the permitted connection
 		if not sourcematch and destmatch:
 			global icmpnetworkegresspermitted
 			if icmpnetworkegresspermitted == 0:
-				print ("\n-=-Egress Recon-=-\nNetwork egress detected! Internal hosts are permitted to ping the internet.")
+				logging.info("\n-=-Egress Recon-=-\nNetwork egress detected! Internal hosts are permitted to ping the internet.")
 				icmpnetworkegresspermitted = 1
 		#print("\nEnd of the icmpdiscovery method.\n")
 
@@ -290,25 +293,25 @@ def udpdiscovery(header,data):
 				if dest_network == known_network:
 					unknowndestnetwork = 1
 		if unknownsourcenetwork == 0 and sourcematch:
-			print ("\n-=-Network Recon-=-\nA new network has been identified: %s") % (source_network)
+			logging.info(("\n-=-Network Recon-=-\nA new network has been identified: %s") % (source_network))
 			knownnets[source_network].add(source_ip)
 		if unknowndestnetwork == 0 and destmatch:
 			if source_network != dest_network:
-				print ("\n-=-Network Recon-=-\nA new network has been identified: %s") % (dest_network)
+				logging.info(("\n-=-Network Recon-=-\nA new network has been identified: %s") % (dest_network))
 				knownnets[dest_network].add(dest_ip)
 
 	# If a host does not match an RFC1918 address that an RFC1918 address is talking to note the external host and the internal host permitted to talk to it and notify the user about the permitted connection
 	if not sourcematch and destmatch:
 		global udpnetworkegresspermitted
 		if udpnetworkegresspermitted == 0:
-			print ("\n-=-Egress Recon-=-\nNetwork egress detected! Internal hosts are permitted to connect to the internet via UDP.")
+			logging.info("\n-=-Egress Recon-=-\nNetwork egress detected! Internal hosts are permitted to connect to the internet via UDP.")
 			udpnetworkegresspermitted = 1
 		for externalhost in externalhosts.keys():
 			if source_ip == externalhost:
 				unknownexternalhost = 1
 		if unknownexternalhost == 0 and udpnetworkegresspermitted == 1:
 			externalhosts[source_ip].add(dest_ip)
-			print("\n-=-Egress Recon Update-=-\n%s is permitted to connect to %s on UDP port %s.") % (dest_ip, source_ip, udp_source_port)
+			logging.info(("\n-=-Egress Recon Update-=-\n%s is permitted to connect to %s on UDP port %s.") % (dest_ip, source_ip, udp_source_port))
 
 	# For each host listed as a key in our host data dictionarys, compare the actual host to the key. If it matches, make note of it by setting hostexists to '1'
 	if udp_source_port <= 8000:
@@ -326,7 +329,7 @@ def udpdiscovery(header,data):
 
 	# If hostexists 0 and the source port is less than 8000, indicating a new host has been identified, notify the user and add the host and port to the data dictionary using the host as a key value
 	if ( hostexists == 0 and udp_source_port <=8000 ):
-		print("\n-=-Host Recon-=-\nA new host was identified with an open UDP port: %s:%s") % (source_ip, udp_source_port)
+		logging.info(("\n-=-Host Recon-=-\nA new host was identified with an open UDP port: %s:%s") % (source_ip, udp_source_port))
 		arpintelligence[source_ip].add(source_mac)
 		arpintelligence[dest_ip].add(dest_mac)
 		udpintelligence[source_ip].add(udp_source_port)
@@ -347,11 +350,11 @@ def udpdiscovery(header,data):
 					notnewsnmpstringhost = 1
 				if notnewsnmpstringhost != 1:
 					snmpstrings[communitystring].add(source_ip)
-					print("\n-=-SNMP Recon Update-=-\n A new host has been identified which uses the '%s' SNMP community string: %s.\nThe following hosts are configured with this SNMP community string:\n") % ( communitystring, source_ip )
+					logging.info(("\n-=-SNMP Recon Update-=-\n A new host has been identified which uses the '%s' SNMP community string: %s.\nThe following hosts are configured with this SNMP community string:\n") % ( communitystring, source_ip ))
 					for host in snmpstrings[string]:
-						print("%s, ") % ( host ),
+						logging.info(("%s, ") % ( host ),)
 		else:
-			print("\n-=-SNMP Recon-=- We have a new SNMPv1 community string from %s: %s\n") % ( source_ip, communitystring ) 
+			logging.info(("\n-=-SNMP Recon-=- We have a new SNMPv1 community string from %s: %s\n") % ( source_ip, communitystring )) 
 			snmpstrings[communitystring].add(source_ip)
 
 	# If we have an SMB packet, extract intelligence from this - this is going to be bigger than simply dumping the packets. Going to require classification of types of requests
@@ -364,17 +367,17 @@ def udpdiscovery(header,data):
 			if mailslotmatch:
 				mailslotstring = re.findall("(?<=\n\x00)(?!\x03\x90\x00)[\w\-\!\@\$\%\^\&\(\)\+\=\[\]\{\}\'\;\~\`]{1,15}(?=\x00)|(?<=\x0f\x01U\xaa)(?!\x03\x90\x00)[\w\s\:\-\=\_\-\+\[\]\{\}\!\@\#\$\%\^\&\*\(\)\'\"\:\;\~\`]+(?=\x00)", ethernet_packet.child().child().child().get_buffer_as_string(), re.MULTILINE)
 				if len(mailslotstring) == 1:
-					print('\n-=-SMB Recon-=-\nThe hostname for \'%s\' is \'%s\'') % ( source_ip, mailslotstring[0] )
+					logging.info(('\n-=-SMB Recon-=-\nThe hostname for \'%s\' is \'%s\'') % ( source_ip, mailslotstring[0] ))
 					mailslotbrowser[source_ip].add(mailslotstring[0])
 				if len(mailslotstring) == 2:
-					print('\n-=-SMB Recon-=-\nThe hostname for \'%s\' is \'%s\' and it describes itself as \'%s\'') % ( source_ip, mailslotstring[0], mailslotstring[1] )
+					logging.info(('\n-=-SMB Recon-=-\nThe hostname for \'%s\' is \'%s\' and it describes itself as \'%s\'') % ( source_ip, mailslotstring[0], mailslotstring[1] ))
 					mailslotbrowser[source_ip].add(mailslotstring[0])
 					mailslotbrowser[source_ip].add(mailslotstring[1])
 
 	# Work support for HSRP protocol
 	global HSRPnotification
 	if ( udp_source_port == 1985 and HSRPnotification != 1 ):
-		print('\n-=-Layer2/3 Recon-=-\nCisco HSRP is spoken here')
+		logging.info('\n-=-Layer2/3 Recon-=-\nCisco HSRP is spoken here')
 		HSRPnotification = 1
 		#print('\n-=-Layer2/3 Recon-=-\nWe have an HSRP packet:\n%s\n\n\n\n%s\n\n\n\n%s\n') % ( ethernet_packet.child().child().child().get_buffer_as_string(), ethernet_packet.child().child().child(), data )
 	#print("\nEnd of udpdiscovery method.\n")
@@ -417,7 +420,7 @@ def tcppushdiscovery(header,data):
 		    if source_port == port:
 		        portexists = 1
                 if portexists == 0:
-                    print("\n-=-TCP Push discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( source_ip, source_port, dest_ip )
+                    logging.info(("\n-=-TCP Push discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( source_ip, source_port, dest_ip ))
 		    tcpintelligence[source_ip].add(source_port)
 		    trustedintelligence[source_ip].add(dest_ip)
                 return
@@ -427,14 +430,14 @@ def tcppushdiscovery(header,data):
 		    if dest_port == port:
 		        portexists = 1
                 if portexists == 0:
-                    print("\n-=-TCP Push discovery-=-\n%s appears to be talking to an open TCP port - %s:%s.") % ( source_ip, dest_ip, dest_port )
+                    logging.info(("\n-=-TCP Push discovery-=-\n%s appears to be talking to an open TCP port - %s:%s.") % ( source_ip, dest_ip, dest_port ))
 		    tcpintelligence[source_ip].add(source_port)
 		    trustedintelligence[source_ip].add(dest_ip)
 		tcpintelligence[dest_ip].add(dest_port)
 		trustedintelligence[dest_ip].add(source_ip)
                 return
             if ( source_port > 1024 and dest_port > 1024 ):
-                print("\n-=-TCP Push discovery-=-\nThere appears to be a TCP based conversation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening TCP service.") % ( source_ip, source_port, dest_ip, dest_port )
+                logging.info(("\n-=-TCP Push discovery-=-\nThere appears to be a TCP based conversation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening TCP service.") % ( source_ip, source_port, dest_ip, dest_port ))
                 #Need to work this algorithm a bit more but colon separated datadict values with a split comparison to the host might work. For now we just announce it and return
                 #source_ip_and_dest_port = 'source_ip' + ':' + 'dest_port'
                 #tcppshack[dest_ip].add(source_ip_adn_dest_port)
@@ -476,7 +479,7 @@ def tcpdiscovery(header,data):
 			olddiffipid = newdiffipid
 			ipiditem += 1
 		if ( oldzombiehost == 0 and diffpidmatch >= 10 ):
-			print("\n-=-Zombie Recon-=-\n%s uses predictible IPID sequence numbers! Last difference:%s. Captured IPID sequence numbers:\n%s\n") % ( source_ip,newdiffipid,tcpipidnumbers[source_ip] )
+			logging.info(("\n-=-Zombie Recon-=-\n%s uses predictible IPID sequence numbers! Last difference:%s. Captured IPID sequence numbers:\n%s\n") % ( source_ip,newdiffipid,tcpipidnumbers[source_ip] ))
 			for ipidnumber in tcpipidnumbers[source_ip]:
 				zombiehosts[source_ip].add(ipidnumber)
 		# Clean the list of ipid sequence numbers to preserve memory
@@ -537,25 +540,25 @@ def synackdiscovery(header, data):
 				if dest_network == known_network:
 					unknowndestnetwork = 1
 		if unknownsourcenetwork == 0 and sourcematch:
-			print ("\n-=-Network Recon-=-\nA new network has been identified: %s") % (source_network)
+			logging.info(("\n-=-Network Recon-=-\nA new network has been identified: %s") % (source_network))
 			knownnets[source_network].add(source_ip)
 		if unknowndestnetwork == 0 and destmatch:
 			if source_network != dest_network:
-				print ("\n-=-Network Recon-=-\nA new network has been identified: %s") % (dest_network)
+				logging.info(("\n-=-Network Recon-=-\nA new network has been identified: %s") % (dest_network))
 				knownnets[dest_network].add(dest_ip)
 
 	# If a host does not match an RFC1918 address that an RFC1918 address is talking to note the external host and the internal host permitted to talk to it and notify the user about the permitted connection
 	if not sourcematch and destmatch:
 		global tcpnetworkegresspermitted
 		if tcpnetworkegresspermitted == 0:
-			print ("\n-=-Egress Recon-=-\nNetwork egress detected! Internal hosts are permitted to connect to the internet via TCP.")
+			logging.info(("\n-=-Egress Recon-=-\nNetwork egress detected! Internal hosts are permitted to connect to the internet via TCP."))
 			tcpnetworkegresspermitted = 1
 		for externalhost in externalhosts.keys():
 			if source_ip == externalhost:
 				unknownexternalhost = 1
 		if unknownexternalhost == 0 and tcpnetworkegresspermitted == 1:
 			externalhosts[source_ip].add(dest_ip)
-			print("\n-=-Egress Recon Update-=-\n%s is permitted to connect to %s on TCP port %s.") % (dest_ip, source_ip, source_port)
+			logging.info(("\n-=-Egress Recon Update-=-\n%s is permitted to connect to %s on TCP port %s.") % (dest_ip, source_ip, source_port))
 
 	# For each host listed as a key in our data dictionary, compare the actual host to the key. If it matches, make note of it by setting hostexists to '1'
 	for host in tcpintelligence.keys():
@@ -570,7 +573,7 @@ def synackdiscovery(header, data):
 
 	# If hostexists 0, indicating a new host has been identified, notify the user and add the host and port to the data dictionary using the host as a key value
 	if hostexists == 0:
-		print "\n-=-Host Recon-=-\nA new host was identified with an open TCP port: %s:%s" % (source_ip, source_port)
+		logging.info(("\n-=-Host Recon-=-\nA new host was identified with an open TCP port: %s:%s") % (source_ip, source_port))
 		arpintelligence[source_ip].add(source_mac)
 		arpintelligence[dest_ip].add(dest_mac)
 		tcpintelligence[source_ip].add(source_port)
@@ -587,15 +590,14 @@ def synackdiscovery(header, data):
 
 	# If the port from the source host is a new port, notify the user about the connect, update the data dictionary and list all the ports we know are open for this host as well as the hosts permitted to connect to it
 	if portexists == 0:
-		print "\n-=-Host Recon Update-=-\nA new open TCP port was discovered for %s. This host has the following open TCP ports:" % (source_ip),
+		logging.info(("\n-=-Host Recon Update-=-\nA new open TCP port was discovered for %s. This host has the following open TCP ports:") % (source_ip)),
 		tcpintelligence[source_ip].add(source_port)
 		trustedintelligence[source_ip].add(dest_ip)
 		for port in sorted(tcpintelligence[source_ip]):
-			print ("%s,") % ( port ),
-		print "\n\n-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s:" % (source_ip),  
+		        logging.info(port)
+		logging.info(("\n\n-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s:") % (source_ip),)  
 		for trust in trustedintelligence[source_ip]:
-			print ("%s,") % ( trust ),
-		print("\n")
+			logging.info(trust)
 	#with open('prebellico_output.csv', 'w') as outfile:
 		#json.dumps(tcpintelligence, outfile, sort_keys=True, indent=4)
 		#json.dumps(arpintelligence, outfile, sort_keys=True, indent=4)
@@ -616,6 +618,13 @@ def synackdiscovery(header, data):
 	#print("\nEnd of synackdiscovery method.\n")
 	return
 	#pdb.set_trace()
+
+def logAllTheThings():
+    #Default function for logging data obtained by prebellico
+    #Obtain the current date/time
+    now = datetime.now()
+    timestamp = str(now.strftime('%d-%b-%Y %H:%M:%S.%f'))
+
 
 def getInterface():
     # Grab a list of interfaces that pcap is able to listen on.
@@ -650,6 +659,15 @@ def getInterface():
 
     return ifs[idx]
 
+# Setting logging parameters
+logfile=args['log']
+if logfile is None:
+    logging.basicConfig(filename='prebellico.log', format='%(message)s', level=logging.INFO)
+else:
+    logging.basicConfig(filename=logfile, format='%(message)s', level=logging.INFO)
+console = logging.StreamHandler()
+logging.getLogger('').addHandler(console)
+
 # Determine if a device has been specififed. If not, hunt for compatible devices and ask the user to select a compatible device - Note, this is a bit of a hack, but it works.
 dev=args['inf']
 if dev is None:
@@ -674,5 +692,8 @@ decoder = ImpactDecoder.EthDecoder()
 time.sleep(1)
 
 # Call the inspectproto function to determine protocol support
-sniff.loop(0, inspectproto)
+try:
+    sniff.loop(0, inspectproto)
+except:
+    exit(0)
 
