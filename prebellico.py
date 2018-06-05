@@ -12,7 +12,6 @@ import sqlite3
 import argparse
 import logging
 from datetime import datetime
-from optparse import OptionParser 
 from impacket import ImpactDecoder
 from pcapy import findalldevs, open_live, PcapError
 from operator import itemgetter
@@ -30,20 +29,23 @@ parser.add_argument('-x', '--exclude', help='Specify a host to exclude from coll
 parser.add_argument('-p', '--semipassive', help='Perform semi-passive data collection after a specified period of time where no new passive intelligence is aquired.')
 parser.add_argument('-a', '--semiaggressive', help='Perform semi-aggressive data collection after a specififed period of time where no new passive or semi-passive intelligence is aquired.')
 parser.add_argument('-d', '--delay', help='Specify a period of time to wait for new intelligence before shifting to a new form of intelligence gathering.')
+parser.add_argument('-q', '--quiet', help='Remove the Prebellico banner at the start of the script.', action='store_true')
 
 args = vars(parser.parse_args())
 
-# Because everyone needs a cool banner
+# Because everyone needs a cool banner - shown by default unless someone asks for it to be disabled
 banner = """
    ___          __       _____        
   / _ \_______ / /  ___ / / (_)______ 
  / ___/ __/ -_) _ \/ -_) / / / __/ _ \\
 /_/  /_/  \__/_.__/\__/_/_/_/\__/\___/
 """
-print(banner)
-time.sleep(1)
-print("\nThere is no patch for passive recon. ;)")
-time.sleep(3)
+showBanner=args['quiet']
+if showBanner is None:
+    print(banner)
+    time.sleep(1)
+    print("\nThere is no patch for passive recon. ;)")
+    time.sleep(2)
 
 # This just isn't working now. Need to rethink the data structure
 # intelligence = [ {'host':'ip'}, {'hwaddr':'null'}, {'openports':'ports'}, {'os':'null'}, {'trustedhosts','null'}, ('vulns':'null'}, {'updatetime':'null'} ]
