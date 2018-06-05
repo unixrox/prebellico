@@ -28,7 +28,7 @@ parser.add_argument('-t', '--targets', help='Specify targets of interest.')
 parser.add_argument('-x', '--exclude', help='Specify a host to exclude from collection.')
 parser.add_argument('-p', '--semipassive', help='Perform semi-passive data collection after a specified period of time where no new passive intelligence is aquired.')
 parser.add_argument('-a', '--semiaggressive', help='Perform semi-aggressive data collection after a specififed period of time where no new passive or semi-passive intelligence is aquired.')
-parser.add_argument('-d', '--delay', help='Specify a period of time to wait for new intelligence before shifting to a new form of intelligence gathering.')
+parser.add_argument('-w', '--wait', help='Specify a period of time in hours to wait for new intelligence before shifting to a new form of intelligence gathering.')
 parser.add_argument('-q', '--quiet', help='Remove the Prebellico banner at the start of the script.', action='store_true')
 
 args = vars(parser.parse_args())
