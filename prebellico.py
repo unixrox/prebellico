@@ -4,6 +4,7 @@ import pcapy
 import socket
 import netifaces
 import sys
+import os
 import re
 import time
 import json
@@ -24,6 +25,7 @@ import pdb
 parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--inf', help='Specify the interface you want Prebellico to listen on. By default Prebellico will hunt for interfaces and ask the user to specify an interface if one is not provided here.')
 parser.add_argument('-l', '--log', help='Specify an output file. By default Prebellico will log to "prebellico.out" if a logfile is not specified.')
+parser.add_argument('-d', '--db', help='Specify an sqlite db file you want to write to. By default this will create, if need be, and write to "prebellico.db" if not specified by the user, as long as the file is an actual Prebellico DB that the user can read from.')
 parser.add_argument('-t', '--targets', help='Specify targets of interest.')
 parser.add_argument('-x', '--exclude', help='Specify a host to exclude from collection.')
 parser.add_argument('-p', '--semipassive', help='Perform semi-passive data collection after a specified period of time where no new passive intelligence is aquired.')
@@ -33,18 +35,107 @@ parser.add_argument('-q', '--quiet', help='Remove the Prebellico banner at the s
 
 args = vars(parser.parse_args())
 
+# Function to establish the name of the SQLite DB name, either as specified by the user, or using the default, and validating that it is a prebellico database which we can access.
+def checkPrebellicoDb():
+    sqliteDbFile=args['db']
+    if sqliteDbFile is None:
+        sqliteDbFile='prebellico.db'
+    print("\nChecking for a '%s' database file.") % ( sqliteDbFile )
+    if not os.path.exists(sqliteDbFile):
+        print("\nThe '%s' database file does not exist. Creating a prebellico database now.") % ( sqliteDbFile )
+        try:
+            dbConnect=sqlite3.connect(sqliteDbFile)
+            db=dbConnect.cursor()
+            db.execute('create table prebellico(prebellicodb text)')
+            db.execute('insert into prebellico values("prebellico_recon")')
+            db.execute('create table tcpintelligence(host text)')
+            db.execute('create table udpintelligence(host text)')
+            db.execute('create table snmpstrings(string text)')
+            db.execute('create table tcpipidnumbers(host text)')
+            db.execute('create table zombiehosts(host text)')
+            db.execute('create table arpintelligence(host text)')
+            db.execute('create table icmpintelligence(host text)')
+            db.execute('create table trustedintelligence(host text)')
+            db.execute('create table knownnets(host text)')
+            db.execute('create table mailslotbrowser(host text)')
+            db.execute('create table externalhosts(host text)')
+            db.execute('create table tcppshack(host text)')
+            dbConnect.commit()
+            print("\nThe '%s' prebellico database file has been created.") % ( sqliteDbFile )
+            dbConnect.close()
+        except sqlite3.OperationalError, msg:
+            print msg
+    else:
+        print("\nThe '%s' database file exists. Working to confirm it's a prebellio database file and we have access to the database file.") % ( sqliteDbFile )
+        try:
+            dbConnect=sqlite3.connect(sqliteDbFile)
+            db=dbConnect.cursor()
+            db.execute('select * from prebellico')
+            confirmPrebellicoDb=db.fetchone()[0]
+            if confirmPrebellicoDb == "prebellico_recon":
+                print("\nThe '%s' file is a prebellico database file.") % ( sqliteDbFile )
+                dbConnect.close()
+            else:
+                print("\nThe '%s' file is not a prebellico database file:") % ( sqliteDbFile )
+                print("\nPlease correct this issue and try again.")
+                exit()
+        except sqlite3.OperationalError, msg:
+            print("\nThe '%s' file is not a prebellico database file:") % ( sqliteDbFile )
+            print msg
+            print("\nPlease correct this issue and try again.")
+            exit()
+
+# Function to log all the things so that data can easily be logged where the user wants it, ensuring that it is stored in a standard log, as well as the DB when needed.
+def logAllTheThings(queryType, functionName, data):
+    prebellicoDb(queryType, functionName, data)
+    if queryType == write:
+        prebellicoLog(functionName, data)
+    return
+
+# Function to open and close the DB, as well as return data as required
+def prebellicoDb(queryType, functionName, data):
+    dbConnect=sqlite3.connect(sqliteDbFile)
+    db=dbConnect.cursor()
+    dbConnect.close()
+
+    # If the request is to read data from the DB, read the data, close the DB connection and return the data for output
+    if queryType is 'read':
+        # Select statements here
+
+        # Close the database connection and return the selected data
+        dbConnect.close()
+        return(data)
+
+    # If the request is to write data to the DB, post the data and close the connection
+    elif queryType is 'write':
+        # Write insert/update statements here
+
+        # Close the database connection
+        dbConnect.close()
+        return
+    else:
+        print("Something went wrong while trying to interact with the %s database via the %s function! The query type was '%s' and the data was '%s'.") % ( sqliteDbFile, functionName, queryType, data )
+        return
+
+# Function to write data to the screen and prebellico log
+def prebellicoLog(functionName, data):
+    #Obtain the current date/time
+    now = datetime.now()
+    timestamp = str(now.strftime('%d-%b-%Y %H:%M:%S.%f'))
+    logging.info(data)
+    return
+
 # Because everyone needs a cool banner - shown by default unless someone asks for it to be disabled
-banner = """
-   ___          __       _____        
-  / _ \_______ / /  ___ / / (_)______ 
- / ___/ __/ -_) _ \/ -_) / / / __/ _ \\
-/_/  /_/  \__/_.__/\__/_/_/_/\__/\___/
-"""
-showBanner=args['quiet']
-if showBanner is None:
+def prebellicoBanner():
+    banner = """
+       ___          __       _____        
+      / _ \_______ / /  ___ / / (_)______ 
+     / ___/ __/ -_) _ \/ -_) / / / __/ _ \\
+    /_/  /_/  \__/_.__/\__/_/_/_/\__/\___/
+    """
     print(banner)
     time.sleep(1)
-    print("\nThere is no patch for passive recon. ;)")
+    print("\nThere is no patch for passive recon. ;)\n")
     time.sleep(2)
 
 # This just isn't working now. Need to rethink the data structure
@@ -621,33 +712,26 @@ def synackdiscovery(header, data):
 	return
 	#pdb.set_trace()
 
-def logAllTheThings():
-    #Default function for logging data obtained by prebellico
-    #Obtain the current date/time
-    now = datetime.now()
-    timestamp = str(now.strftime('%d-%b-%Y %H:%M:%S.%f'))
-
-
 def getInterface():
     # Grab a list of interfaces that pcap is able to listen on.
     # The current user will be able to listen from all returned interfaces,
     # using open_live to open them.
-    print '\nSearching the system for compatible devices.\n'
+    print '\nSearching the system for compatible devices.'
     ifs = findalldevs()
 
     # No interfaces available, abort.
     if 0 == len(ifs):
-        print "You don't have enough permissions to open any interface on this system."
+        print "\nYou don't have enough permissions to open any interface on this system."
         sys.exit(1)
 
     # Only one interface available, use it.
     elif 1 == len(ifs):
-        print 'Only one interface present, defaulting to it.'
+        print "\nOnly one interface present, defaulting to it."
         return ifs[0]
 
     # Ask the user to choose an interface from the list.
     else:
-        print 'Numerous compatible interfaces identified:\n'
+        print "\nNumerous compatible interfaces identified:\n"
         count = 0
         for iface in ifs:
             try:
@@ -657,9 +741,16 @@ def getInterface():
                     count += 1
             except PcapError, e:
                 break
-    idx = int(raw_input('\nPlease select an interface you would like to use: '))
-
+    idx = int(raw_input("\nPlease select an interface you would like to use:"))
     return ifs[idx]
+
+# Call the prebellico banner if the user has not disabled this function
+showBanner=args['quiet']
+if showBanner is False:
+    prebellicoBanner()
+
+# Check the prebellico database
+checkPrebellicoDb()
 
 # Setting logging parameters
 logfile=args['log']
@@ -673,13 +764,14 @@ logging.getLogger('').addHandler(console)
 # Determine if a device has been specififed. If not, hunt for compatible devices and ask the user to select a compatible device - Note, this is a bit of a hack, but it works.
 dev=args['inf']
 if dev is None:
+    print("\nAn interface was not provided.")
     dev = getInterface()
 
 # Obtain the selected interface IP to use as a filter, allowing us to pwn all the things without pissing in prebellico's data pool
 devip = netifaces.ifaddresses(dev)[2][0]['addr']
 
 # Place the ethernet interface in promiscuous mode, capturing one packet at a time with a snaplen of 1500
-print("\nPlacing the interface in sniffing mode.")
+print("\nPlacing the '%s' interface in sniffing mode.") % ( dev )
 sniff = pcapy.open_live(dev, 1500, 1, 100)
 print "\nListening on %s: IP = %s, net=%s, mask=%s, linktype=%d" % (dev, devip, sniff.getnet(), sniff.getmask(), sniff.datalink())
 time.sleep(1)
