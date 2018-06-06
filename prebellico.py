@@ -796,15 +796,6 @@ if readPcapFile is None and dev is None:
 if readPcapFile is None and dev is not None:
     ( devip, sniff) = sniffInterface(dev)
 
-# Obtain the selected interface IP to use as a filter, allowing us to pwn all the things without pissing in prebellico's data pool
-#devip = netifaces.ifaddresses(dev)[2][0]['addr']
-
-# Place the ethernet interface in promiscuous mode, capturing one packet at a time with a snaplen of 1500
-#print("\nPlacing the '%s' interface in sniffing mode.") % ( dev )
-#sniff = pcapy.open_live(dev, 1500, 1, 100)
-#print "\nListening on %s: IP = %s, net=%s, mask=%s, linktype=%d" % (dev, devip, sniff.getnet(), sniff.getmask(), sniff.datalink())
-#time.sleep(1)
-
 # Set a filter for data based upon user preferences.
 includeInterface=args['subsume']
 extraPcapSyntax=args['extra']
@@ -820,10 +811,6 @@ except PcapError, e:
     print("\nSomething is wrong with your PCAP filter syntax: %s") % (e)
     print("\nPlease correct these issues and try again.")
     exit()
-
-# Set a filter for data.
-#filter = ("ip or arp or aarp and not host 0.0.0.0 and not host %s") % ( devip )
-#sniff.setfilter(filter)
 
 # Start the impact packet decoder
 print("\nWatching for relevant intelligence.\n")
