@@ -19,7 +19,7 @@ from operator import itemgetter
 from itertools import groupby
 from collections import defaultdict
 import string
-import pdb
+from pdb import set_trace as bp
 
 # Parse arguments from user via argparse
 parser = argparse.ArgumentParser()
@@ -433,12 +433,11 @@ def udpdiscovery(header,data):
 	# If we have a response from a host on port 161, notify the user and extract the SNMP string - note this is buggy as there is not SNMP packet verification
 	if udp_source_port == 161:
 		snmppacketfilterregex = re.compile('[a-zA-Z0-9.*].*(?=:)')# Regex to yank data before colon within snmp string data
-		snmptempdata = snmppacketfilterregex.findall(tempdata)
-		printable = set(string.printable)
-		#print printable
-		communitystring = filter(lambda x: x in printable, snmptempdata[0])
-		#print communitystring
-		communitystring = communitystring[2:]
+		snmptempdata=snmppacketfilterregex.findall(tempdata)
+                potentialSnmpStrings = re.split('[\x00-\x1f,\x7f-\xff]',snmptempdata[0])
+                for justTheString in potentialSnmpStrings:
+                    if len(justTheString) > 4:
+                        communitystring = justTheString
 		if communitystring in snmpstrings.keys():
 			for host in snmpstrings[string]:
 				if host == source_ip:
