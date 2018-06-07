@@ -183,6 +183,9 @@ mailslotbrowser = defaultdict(set)
 # Define a variable to control output of HSRP traffic - This is temporary until this is more built out.
 HSRPnotification = 0
 
+# Define a data dictionary for confirmed HSRP passwords using the password as a key and the host as a vaule
+hsrppasswords = defaultdict(set)
+
 # Define a data dictionary for TCP ACK's designed to confirm server to client ACK's affiliated with SMB PSH/ACK requests using the host IP as the key
 tcppshack = defaultdict(set)
 
@@ -432,7 +435,7 @@ def udpdiscovery(header,data):
 
         #If we see someone scanning for SNMP using community strings, alert the user to the names that are used, and the source host that it is coming from. Typically this is a an IT/Security event, so this is attributed to 'Skynet'
         if udp_dest_port == 161:
-            snmppacketfilterregex = re.compile('[a-zA-Z0-9.*].*')# Regex to yank data before colon within snmp string data
+            snmppacketfilterregex = re.compile('[a-zA-Z0-9.*].*')# Regex to yank data within snmp string data
             snmptempdata=snmppacketfilterregex.findall(tempdata)
             potentialSnmpStrings = re.split('[\x00-\x1f,\x7f-\xff]',snmptempdata[0])
             for justTheString in potentialSnmpStrings:
@@ -446,7 +449,7 @@ def udpdiscovery(header,data):
 		snmptempdata=snmppacketfilterregex.findall(tempdata)
                 potentialSnmpStrings = re.split('[\x00-\x1f,\x7f-\xff]',snmptempdata[0])
                 for justTheString in potentialSnmpStrings:
-                    if len(justTheString) > 4:
+                    if len(justTheString) >= 4:
                         communitystring = justTheString
 		if communitystring in snmpstrings.keys():
 			for host in snmpstrings[string]:
@@ -482,7 +485,36 @@ def udpdiscovery(header,data):
 	global HSRPnotification
 	if ( udp_source_port == 1985 and HSRPnotification != 1 ):
 		logging.info('\n-=-Layer2/3 Recon-=-\nCisco HSRP is spoken here')
-		HSRPnotification = 1
+                HSRPnotification = 1
+        if ( udp_source_port == 1985 ):
+                unhashedHsrpPassword = 0
+                hsrpPassExists = 0
+                hsrptempdata = ethernet_packet.child().child().child().get_buffer_as_string()
+                hsrppacketfilterregex = re.compile('[a-zA-Z0-9.*].*')# Regex to yank data within snmp string data
+                hsrptempdata=hsrppacketfilterregex.findall(hsrptempdata)
+                
+                #Trying to work past a bug here for various types of HSRP packets. This doesn't really work to pull the hashed value, but manages a crash. Need to resolve this issue somehow.
+                try: 
+                    potentialHsrpPass = re.split('[\x00-\x1f,\x7f-\xff]',hsrptempdata[0])
+                    for justTheString in potentialHsrpPass:
+                        if len(justTheString) >= 4:
+                            hsrppass = justTheString
+                            if len(hsrppass) == 32:
+                                md5detect = re.fullmatch('[a-zA-Z0-9.*]{32}')
+                                if md5detect is not None:
+                                    logging.info(('\n-=-Layer2/3 Recon-=-\nWe have an HSRP packet with either an MD5 hashed password or a raw password: %s') % ( hsrppass ))
+                                else:
+                                    unhashedHsrpPassword = 1
+                            else:
+                                unhashedHsrpPassword = 1
+                    for storedHsrpPass in hsrppasswords.keys():
+                        if storedHsrpPass == hsrppass:
+                                hsrpPassExists = 1
+                    if ( unhashedHsrpPassword == 1 and hsrpPassExists == 0 ):
+                        logging.info(('\n-=-Layer2/3 Recon-=-\nWe have an HSRP packet with an unhashed password: %s') % ( hsrppass ))
+                        hsrppasswords[hsrppass].add(source_ip)
+                except:
+                    pass
 		#print('\n-=-Layer2/3 Recon-=-\nWe have an HSRP packet:\n%s\n\n\n\n%s\n\n\n\n%s\n') % ( ethernet_packet.child().child().child().get_buffer_as_string(), ethernet_packet.child().child().child(), data )
 	#print("\nEnd of udpdiscovery method.\n")
 	return
