@@ -38,7 +38,7 @@ def checkPrebellicoDb():
             db.execute('create table prebellico(prebellicodb text)')
             db.execute('insert into prebellico values("prebellico_recon")')
             db.execute('create table HostIntelligence(number integer primary key, firstObserved text, lastObserved text, ipAddress text, macAddy text, hostname text, fqdn text, domain text, hostDescription text, dualHomed text, os text, hostType text, trustRelationships text, openTcpPorts text, openUdpPorts text, zombieIpid text, validatedSnmp text, validatedUsernames text, validatedPasswords text, credentials text, exploits text, permittedEgress text, discoveryInterface text, interfaceIp text)') 
-            db.execute('create table NetworkIntelligence(id integer primary key, recordType text, data text, dateObserverd text, associatedHost text, methodObtained text, sourceInterface text)')
+            db.execute('create table NetworkIntelligence(id integer primary key, recordType text, data text, dateObserved text, associatedHost text, methodObtained text, sourceInterface text)')
             db.execute('create table TcpPushSessionTracking(number integer primary key, sourceIp text, sourcePort text, destIp text, destPort text)')
             db.execute('create table PrebellicoMeshNodes(id integer primary key, observerId text, role text, ipAddress text, connectionMethod text, networkEgress text, egressMethod text, c2Endpoint text, encryptionKey text)')
             db.execute('create table PrebellicoHostConfiguration(id integer primary key, executionDate text, flags text, interface text, ipAddress text, role text, c2Method text)')
@@ -104,13 +104,19 @@ def prebellicoDb(queryType, statement, data):
         return
 
 
+# Function to produce the time for database record keeping purposes. This is a function with intent to allow the user to sepecify how to create timestamps.
+def timeStamp():
+    #Obtain the current date/time in a standard format and return it
+    now = datetime.now()
+    return(str(now.strftime('%d%b%y %H:%M:%S')))
+
+
 # Function to write data to the screen and prebellico log
 def prebellicoLog(data):
     #Obtain the current date/time and write the message out to the log
-    now = datetime.now()
-    logging.info(("\n%s %s") % (str(now.strftime('%d%b%y %H:%M:%S')), data))
+    #now = datetime.now()
+    logging.info(("\n%s %s") % (timeStamp(), data))
     return
-
 
 # Because everyone needs a cool banner - shown by default unless someone asks for it to be disabled
 def prebellicoBanner():
@@ -139,7 +145,7 @@ def checkknownnetwork(networkIp, internalMatch):
     knownNetworkCidr = networkIpOctets[0] + '.' + networkIpOctets[1] + '.' + networkIpOctets [2] + '.1/24'
     knownSourceNetwork = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "knownNet" and data=(?)', knownNetworkCidr)
     if knownSourceNetwork is None and internalMatch:
-        prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data) values ("knownNet", ?)', knownNetworkCidr)
+        prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, dateObserved, associatedHost, methodObtained, sourceInterface) values ("knownNet", ?, ?, ?, "passiveNetwork", ?)', [knownNetworkCidr, timeStamp(), networkIp, dev] )
         prebellicoLog(("-=-Network Recon-=-\nA new network has been identified: %s") % (knownNetworkCidr))
         newKnownNet = 1
     else:
@@ -232,6 +238,9 @@ def icmpdiscovery(header,data):
 	if protocolNumber != 1:
     	    return
 	ipHdr = ethernetPacket.child()
+        macHdr = ethernetPacket
+        sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
+        destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
         sourceIp = ipHdr.get_ip_src()
         destIp = ipHdr.get_ip_dst()
 	icmpHdr = ethernetPacket.child().child()
@@ -245,11 +254,11 @@ def icmpdiscovery(header,data):
 
             # If a host does not match an RFC1918 address or a user specified internal address that an internal address is talking to, note the external host and the internal host permitted to talk to it and notify the user about the permitted connection.
             if not sourceMatch and destMatch:
-                global icmpnetworkegresspermitted
-                if icmpnetworkegresspermitted == 0:
-                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained) values ("egressMethod", "icmp", ?, "passiveNetwork")', destIp)
+                global icmpNetworkEgressPermitted
+                if icmpNetworkEgressPermitted == 0:
+                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("egressMethod", "icmp", ?, "passiveNetwork", ?, ?)', [destIp, timeStamp(), dev] )
                     prebellicoLog("-=-Egress Recon-=-\nNetwork egress detected! Internal hosts are permitted to ping the internet.")
-                    icmpnetworkegresspermitted = 1
+                    icmpNetworkEgressPermitted = 1
 
             # If the source host does match an RFC1918 address or a user specified internal address that an internal address is talking to, check to see if it belongs to any known nets.
             if sourceMatch:
@@ -258,7 +267,7 @@ def icmpdiscovery(header,data):
                 # See if the source host is stored in the DB in some way. If not, make a database record and alert the user.
                 host = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
                 if host is None:
-                    prebellicoDb('writeToDb', 'insert into HostIntelligence (ipAddress) values (?)', sourceIp)
+                    prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved,lastObserved, ipAddress, macAddy, discoveryInterface, interfaceIp) values (?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, dev, devip ] )
                     prebellicoLog(("-=-ICMP Recon-=-\nIdentified a host through ICMP(%s): %s") % ( icmpType, sourceIp ))
         return
 
@@ -313,7 +322,7 @@ def udpdiscovery(header,data):
                 udpNetworkEgressPermitted = 1
             knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
             if knownExternalHost is None:
-                prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data) values ("externalHost", ?)', sourceIp)
+                prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("externalHost", ?, ?, "passiveNetwork", ?, ? )', [ sourceIp, destIp, timeStamp(), dev] )
                 prebellicoLog(("-=-Egress Recon Update-=-\n%s is permitted to connect to %s on UDP port %s.") % (destIp, sourceIp, udpSourcePort))
                 
         # If the UDP source port is less than or equal to 8000 and this is a host that does not exist in the HostIntelligence table, log the data and alert the user.
@@ -321,7 +330,7 @@ def udpdiscovery(header,data):
         if hostExists is None and udpSourcePort <= 8000:
 	    tempData = udpHdr.get_data_as_string()
             prebellicoLog(("-=-Host Recon-=-\nA new host was identified with an open UDP port: %s:%s") % (sourceIp, udpSourcePort))
-            prebellicoDb('writeToDb', 'insert into HostIntelligence (ipAddress, macAddy, openUdpPorts, trustRelationships) values (?,?,?,?)', [sourceIp, sourceMac, udpSourcePort, destIp] )
+            prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openUdpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, udpSourcePort, destIp, dev, devip ] )
 
         # If this is a previous host and the port is less than 8000 (which is just an arbitary number - have to start somewhere), update the ports for the host.
         if hostExists is not None and udpSourcePort <=8000:
@@ -330,7 +339,7 @@ def udpdiscovery(header,data):
             if getKnownUdpPorts is not None:
                 newUdpPorts = checkUnique(getKnownUdpPorts, udpSourcePort, 'int')
                 if newUdpPorts != 0:
-                    prebellicoDb('writeToDb', 'update HostIntelligence set openUdpPorts=(?) where ipAddress = (?)', [newUdpPorts, sourceIp] )
+                    prebellicoDb('writeToDb', 'update HostIntelligence set openUdpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newUdpPorts, timeStamp(), sourceIp] )
                     prebellicoLog(("-=-Host Recon Update-=-\nA new open UDP port was discovered for %s. This host has the following open UDP ports: %s") % (sourceIp, newUdpPorts))
 
         #If we see someone scanning for SNMP using community strings, alert the user to the names that are used, and the source host that it is coming from. Typically this is a an IT/Security event, so this is attributed to 'Skynet'
@@ -345,10 +354,10 @@ def udpdiscovery(header,data):
                     knownSkynetSystem = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "skynet" and data=(?)', sourceIp)
                     if knownSkynetSystem is None:
                         prebellicoLog(("-=-Skynet Recon-=-\nA new security system has been identified: %s.") % ( sourceIp ))
-                        prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data) values ("skynet", ?)', sourceIp)
+                        prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("skynet", ?, ?, "passiveNetwork", ?, ?)', [ sourceIp, sourceIp, timeStamp(), dev ] )
                     if knownSnmpString is None:
                         prebellicoLog(("-=-Skynet Recon-=-\n%s is scanning for systems with an SNMPv1 community string: %s") % ( sourceIp, communityString ))
-                        prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost) values ("observedSnmp",?,?)', [communityString,sourceIp] )
+                        prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("observedSnmp",?,?,"passiveNetwork",?,?)', [ communityString, sourceIp, timeStamp(), dev ] )
 
 
 	# If we have a response from a host on port 161, notify the user and extract the SNMP string - note this is buggy as there is not SNMP packet verification
@@ -366,8 +375,8 @@ def udpdiscovery(header,data):
                 # If not, notify the user that this is a new string and store the data in the NetworkIntel table and HostIntel table.
                 if knownValidatedSnmpString is None:
                     prebellicoLog(("-=-SNMP Recon-=-We have a new SNMPv1 community string from %s: %s") % ( sourceIp, communityString ))
-                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost) values ("validatedSnmp",?,?)', [communityString, sourceIp] )
-                    prebellicoDb('writeToDb', 'update HostIntelligence set validatedSnmp=(?) where ipAddress = (?)', [communityString, sourceIp] )
+                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("validatedSnmp",?,?,"passiveNetwork",?,?)', [ communityString, sourceIp, timeStamp(), dev ] )
+                    prebellicoDb('writeToDb', 'update HostIntelligence set validatedSnmp=(?), lastObserved=(?) where ipAddress = (?)', [communityString, timeStamp(), sourceIp] )
 
                 # If this is not a new SNMP community string, work to verify if this string is unique to this host. I think this is rather inefficient.
                 if knownValidatedSnmpString is not None:
@@ -385,8 +394,8 @@ def udpdiscovery(header,data):
                         # If this known SNMP community string is uniqe to this host, annotate it within the NetworkIntel table within the DB and notify the user.
                         if notifyUserOfNewHostUsingSnmpString == 0:
                             prebellicoLog(("-=-SNMP Recon-=-Identified another host that uses '%s' as an SNMP community string: %s") % ( communityString, sourceIp ))
-                            prebellicoDb('writeToDb', 'update HostIntelligence set validatedSnmp=(?) where ipAddress = (?)', [communityString, sourceIp] )
-                            prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost) values ("validatedSnmp",?,?)', [communityString, sourceIp] )
+                            prebellicoDb('writeToDb', 'update HostIntelligence set validatedSnmp=(?), lastObserved=(?) where ipAddress = (?)', [ communityString, timeStamp(), sourceIp ] )
+                            prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("validatedSnmp",?,?,"passiveNetwork",?,?)', [ communityString, sourceIp, timeStamp(), dev ] )
 
 	# If we have an SMB packet, extract intelligence from this - this is going to be bigger than simply dumping the packets. Going to require classification of types of requests
 	if udpSourcePort == 138:
@@ -400,11 +409,11 @@ def udpdiscovery(header,data):
                 if len(mailSlotString) == 1:
                     if knownHostnameString[0] != mailSlotString[0]:
                         prebellicoLog(('-=-SMB Recon-=-\nThe hostname for \'%s\' is \'%s\'') % ( sourceIp, mailSlotString[0] ))
-                        prebellicoDb('writeToDb', 'update HostIntelligence set hostname=(?) where ipAddress = (?)', [mailSlotString[0], sourceIp] )
+                        prebellicoDb('writeToDb', 'update HostIntelligence set hostname=(?), lastObserved=(?) where ipAddress = (?)', [ mailSlotString[0], timeStamp(), sourceIp ] )
                 if len(mailSlotString) == 2:
                     if knownHostnameString[0] != mailSlotString[0] and knownHostDescriptionString != mailSlotString[1]:
                         prebellicoLog(('-=-SMB Recon-=-\nThe hostname for \'%s\' is \'%s\' and it describes itself as \'%s\'') % ( sourceIp, mailSlotString[0], mailSlotString[1] ))
-                        prebellicoDb('writeToDb', 'update HostIntelligence set hostname=(?), hostDescription=(?) where ipAddress = (?)', [mailSlotString[0], mailSlotString[1], sourceIp] )
+                        prebellicoDb('writeToDb', 'update HostIntelligence set hostname=(?), hostDescription=(?), lastObserved=(?) where ipAddress = (?)', [ mailSlotString[0], mailSlotString[1], timeStamp(), sourceIp] )
 
 	# Work support for HSRP protocol
 	global hsrpNotification
@@ -427,10 +436,10 @@ def udpdiscovery(header,data):
                                 md5Detect = re.match("(?:" + '[a-zA-Z0-9.*]{32}' + r")\Z", hsrpPass) # This is a re.findall hack for Python2.
                                 if md5Detect is not None and knownHsrpPassword is None:
                                     prebellicoLog(('-=-Layer2/3 Recon-=-\nWe have an HSRP packet with either an MD5 hashed password or a raw password: %s') % ( hsrpPass ))
-                                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost) values ("hsrp",?,?)', [hsrpPass, sourceIp] )
+                                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("hsrp",?,?,"passiveNetwork",?,?)', [ hsrpPass, sourceIp, timeStamp(), dev ] )
                             elif knownHsrpPassword is None: 
                                     prebellicoLog(('-=-Layer2/3 Recon-=-\nWe have an HSRP packet with an unhashed password: %s') % ( hsrpPass ))
-                                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost) values ("hsrp",?,?)', [hsrpPass, sourceIp] )
+                                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterfvace) values ("hsrp",?,?,"passiveNetwork",?,?)', [ hsrpPass, sourceIp, timeStamp(), dev ] )
                 except:
                     pass
 	return
@@ -486,7 +495,7 @@ def tcppushdiscovery(header,data):
                     tcpNetworkEgressPermitted = 1
                 knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
                 if knownExternalHost is None:
-                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data) values ("externalHost", ?)', sourceIp)
+                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("externalHost", ?,?,"passiveNetwork",?,?)', [ sourceIp, destIp, timeStamp(), dev ] )
                     prebellicoLog(("-=-Egress Recon Update-=-\n%s is permitted to connect to %s on TCP port %s.") % (destIp, sourceIp, sourcePort))
 
             # If completely arbitrary numbers based off of assumed sessions exist where the source port is less than 1024, extract intel and alert the user.
@@ -498,7 +507,7 @@ def tcppushdiscovery(header,data):
                 if hostExists is None and knownExternalHost is None:
                     tempData = tcpHdr.get_data_as_string()
                     prebellicoLog(("-=-TCP Push discovery-=-\nA new host was discovered with what appears to be an open TCP port - %s:%s. %s is talking to this service.") % ( sourceIp, sourcePort, destIp ))
-                    prebellicoDb('writeToDb', 'insert into HostIntelligence (ipAddress, macAddy, openTcpPorts, trustRelationships) values (?,?,?,?)', [sourceIp, sourceMac, sourcePort, destIp] )
+                    prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openTcpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, sourcePort, destIp, dev, devip ] )
                 return
 
                 # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
@@ -506,18 +515,18 @@ def tcppushdiscovery(header,data):
                 if getKnownTcpPorts is not None:
                     newTcpPorts = checkUnique(getKnownTcpPorts, sourcePort, 'int')
                     if newTcpPorts != 0:
-                        prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?) where ipAddress = (?)', [newTcpPorts, sourceIp] )
+                        prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), sourceIp ] )
                         prebellicoLog(("-=-TCP Push discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( sourceIp, sourcePort, destIp ))
                 # Using the source IP address, look up known trusted hosts and see if this is a new trusted host. If it is, log this and alert the user.
                 getKnownTrustedHosts = prebellicoDb('readFromDb', 'select trustRelationships from HostIntelligence where ipAddress = (?)', sourceIp)
                 if getKnownTrustedHosts is None:
-                    prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?) where ipAddress = (?)', [destIp, sourceIp] )
+                    prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?) where ipAddress = (?)', [ destIp, timeStamp(), sourceIp] )
                     prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s") % (sourceIp, destIp))
                 elif getKnownTrustedHosts is not None:
                     newTrustedHosts = checkUnique(getKnownTrustedHosts, destIp, 'string')
                     if newTrustedHosts != 0:
                         prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s") % (sourceIp, newTrustedHosts))
-                        prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?) where ipAddress = (?)', [newTrustedHosts, sourceIp] )
+                        prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?) where ipAddress = (?)', [ newTrustedHosts, timeStamp(), sourceIp ] )
 
                 return
 
@@ -529,7 +538,7 @@ def tcppushdiscovery(header,data):
                 if hostExists is None and knownExternalHost is None:
                     tempData = tcpHdr.get_data_as_string()
                     prebellicoLog(("-=-TCP Push discovery-=-\n%s appears to be talking to a newly discovered host on an open TCP port - %s:%s.") % ( sourceIp, destIp, destPort ))
-                    prebellicoDb('writeToDb', 'insert into HostIntelligence (ipAddress, macAddy) values (?,?)', [destIp, destMac] )
+                    prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, discoveryInterface, interfaceIp) values (?,?,?,?,?,?)', [ timeStamp(), timeStamp(), destIp, destMac, dev, devip] )
                 return
 
                 # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
@@ -537,18 +546,18 @@ def tcppushdiscovery(header,data):
                 if getKnownTcpPorts is not None:
                     newTcpPorts = checkUnique(getKnownTcpPorts, destPort, 'int')
                     if newTcpPorts != 0:
-                        prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?) where ipAddress = (?)', [newTcpPorts, destIp] )
+                        prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), destIp ] )
                         prebellicoLog(("-=-TCP Push discovery-=-\n%s appears to be talking to an open TCP port - %s:%s.") % ( sourceIp, destIp, destPort ))
 
                 getKnownTrustedHosts = prebellicoDb('readFromDb', 'select trustRelationships from HostIntelligence where ipAddress = (?)', destIp)
                 if getKnownTrustedHosts is None:
-                    prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?) where ipAddress = (?)', [sourceIp, destIp] )
+                    prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?)  where ipAddress = (?)', [ sourceIp, timeStamp(), destIp ] )
                     prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s") % (destIp, sourceIp))
                 elif getKnownTrustedHosts is not None:
                     newTrustedHosts = checkUnique(getKnownTrustedHosts, sourceIp, 'string')
                     if newTrustedHosts != 0:
                         prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s") % (destIp, newTrustedHosts))
-                        prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?) where ipAddress = (?)', [newTrustedHosts, destIp] )
+                        prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?) where ipAddress = (?)', [ newTrustedHosts, timeStamp(), destIp ] )
                 return
 
             # If we have a situation where we are not sure where the server is, because both ports are above 1024, work to pool intel to determine where the server is.
@@ -559,7 +568,7 @@ def tcppushdiscovery(header,data):
                 if hostExists is None and knownExternalHost is None:
                     tempData = tcpHdr.get_data_as_string()
                     prebellicoLog(("-=-TCP Push discovery-=-\nA new host was discovered %s, which is talking to %s:%s.") % ( sourceIp, destIp, destPort ))
-                    prebellicoDb('writeToDb', 'insert into HostIntelligence (ipAddress, macAddy) values (?,?)', [sourceIp, sourceMac] )
+                    prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, discoveryInterface, interfaceIp) values (?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, dev, devip ] )
 
                 # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
                 getKnownTcpPorts = prebellicoDb('readFromDb', 'select openTcpPorts from HostIntelligence where ipAddress=(?)', sourceIp)
@@ -586,14 +595,14 @@ def tcppushdiscovery(header,data):
                         # If the sourcePort appears to be associated with numerous other hosts on numerous other destPorts, report this to the user, store it in the HostIntelligence database, and clear the TcpPushSessionTracking database as this data will no longer be needed.
                         if sourcePortCount >= 3 and destIpCount >= 2 and nonDestIpCount >= 1:
                             prebellicoLog(("-=-TCP Push discovery-=-\nIntelligence confirms that %s is the server with open TCP port %s.") % ( sourceIp, sourcePort ))
-                            prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?) where ipAddress = (?)', [newTcpPorts, sourceIp] )
+                            prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), sourceIp ] )
 
                             # Determine if this is a widely used service, such as a network proxy. If so, alert the user and log the data to the NetworkIntel db.
                             numberOfServiceClients = int(list(prebellicoDb('readFromDb', 'select count (distinct destIp) from TcpPushSessionTracking where sourceIp = (?) and sourcePort = (?)', [ sourceIp, sourcePort ] ))[0])
                             if numberOfServiceClients >= 5:
                                 prebellicoLog(("-=-TCP Push discovery-=-\nIntelligence confirms that %s:%s is a heavily used network service. While pooling data, %s clients where found to be interacting with this service.") % ( sourceIp, sourcePort, numberOfServiceClients ))
                                 enterpriseService = str(sourceIp) + ":" + str(sourcePort)
-                                prebellicoDb('writeToDb', 'insert into NetworkIntelligence set recordType = "enterpriseService", data = (?)', enterpriseService )
+                                prebellicoDb('writeToDb', 'insert into NetworkIntelligence set recordType = "enterpriseService", data = (?), associatedHost = (?), methodObtained = (?), dateObserved = (?), sourceInterface = (?)', [ enterpriseService, sourceIp, "passiveNetwork", timeStamp(), dev ] )
                                 prebellicoDb('writeToDb', 'delete from TcpPushSessionTracking where sourceIP = (?) and sourcePort = (?)', [ sourceIp, sourcePort ] )
                 return
 
@@ -637,7 +646,7 @@ def tcpdiscovery(header,data):
 			oldDiffIpid = newDiffIpid
 			ipidItem += 1
 		if ( oldZombieHost == 0 and diffIpidMatch >= 10 and newDiffIpid != 0 ):
-                        prebellicoDb('writeToDb', 'update HostIntelligence set zombieIpid=(?) where ipAddress = (?)', [newDiffIpid, sourceIp] )
+                        prebellicoDb('writeToDb', 'update HostIntelligence set zombieIpid=(?), lastObserved=(?) where ipAddress = (?)', [newDiffIpid, timeStamp(), sourceIp] )
 			prebellicoLog(("-=-Zombie Recon-=-\n%s uses predictible IPID sequence numbers! Last difference:%s. Captured IPID sequence numbers:\n%s\n") % ( sourceIp,newDiffIpid,tcpIpidNumbers[sourceIp] ))
 			for ipidNumber in tcpIpidNumbers[sourceIp]:
 				zombieHosts[sourceIp].add(ipidNumber)
@@ -696,7 +705,7 @@ def synackdiscovery(header, data):
                 tcpNetworkEgressPermitted = 1
             knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
             if knownExternalHost is None:
-                prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data) values ("externalHost", ?)', sourceIp)
+                prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("externalHost", ?, ?, "passiveNetwork", ?, ?)', [ sourceIp, destIp, timeStamp(), dev ] )
                 prebellicoLog(("-=-Egress Recon Update-=-\n%s is permitted to connect to %s on TCP port %s.") % (destIp, sourceIp, sourcePort))
 
         # If the host does not exist in the HostIntelligence table, log the data and alert the user.
@@ -705,7 +714,7 @@ def synackdiscovery(header, data):
         if hostExists is None and knownExternalHost is None:
             tempData = tcpHdr.get_data_as_string()
             prebellicoLog(("-=-Host Recon-=-\nA new host was identified with an open TCP port: %s:%s") % (sourceIp, sourcePort))
-            prebellicoDb('writeToDb', 'insert into HostIntelligence (ipAddress, macAddy, openTcpPorts, trustRelationships) values (?,?,?,?)', [sourceIp, sourceMac, sourcePort, destIp] )
+            prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openTcpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, sourcePort, destIp, dev, devip ] )
             return
 
         # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
@@ -713,18 +722,18 @@ def synackdiscovery(header, data):
         if getKnownTcpPorts is not None:
             newTcpPorts = checkUnique(getKnownTcpPorts, sourcePort, 'int')
             if newTcpPorts != 0:
-                prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?) where ipAddress = (?)', [newTcpPorts, sourceIp] )
+                prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), sourceIp ] )
                 prebellicoLog(("-=-Host Recon Update-=-\nA new open TCP port was discovered for %s. This host has the following open TCP ports: %s") % (sourceIp, newTcpPorts))
 
         getKnownTrustedHosts = prebellicoDb('readFromDb', 'select trustRelationships from HostIntelligence where ipAddress = (?)', sourceIp)
         if getKnownTrustedHosts is None:
-            prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?) where ipAddress = (?)', [destIp, sourceIp] )
+            prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?) where ipAddress = (?)', [ destIp, timeStamp(), sourceIp ] )
             prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s") % (sourceIp, destIp))
         elif getKnownTrustedHosts is not None:
             newTrustedHosts = checkUnique(getKnownTrustedHosts, destIp, 'string')
             if newTrustedHosts != 0:
                 prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s") % (sourceIp, newTrustedHosts))
-                prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?) where ipAddress = (?)', [newTrustedHosts, sourceIp] )
+                prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?) where ipAddress = (?)', [ newTrustedHosts, timeStamp(), sourceIp ] )
 	return
 
 
@@ -904,6 +913,10 @@ if readPcapFile is not None and dev is not None:
     print("\nReading from both a PCAP file and sniffing from an interface at the same time is not permitted. Consider processing the PCAP before or after sniffing from a live interface, refrencing the same Prebellico database.")
     exit()
 if readPcapFile is not None and dev is None:
+    # Set dummy interfaces and IP's for logging purposes
+    dev=readPcapFile
+    devip=readPcapFile
+    # Read from the PCAP file and process it.
     sniff = sniffFile(readPcapFile)
 if readPcapFile is None and dev is None:
     print("\nAn interface or a PCAP file was not provided.")
