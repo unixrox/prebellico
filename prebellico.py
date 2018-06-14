@@ -292,17 +292,6 @@ def udpdiscovery(header,data):
         destIp = ipHdr.get_ip_dst()
 	udpSourcePort = udpHdr.get_uh_sport()
 	udpDestPort = udpHdr.get_uh_dport()
-
-	# Define control variables to control message output of discovered hosts
-	hostexists = 0
-	portexists = 0
-	srcarpexists = 0
-	dstarpexists = 0
-	unknownsourcenetwork = 0
-	unknowndestnetwork = 0
-	unknownexternalhost = 0
-	notnewsnmpstringhost = 0
-	unknownmailslotbrowserhost = 0
         tempData = udpHdr.get_data_as_string()
 
         # Work to determine if these are known internal IP addresses based upon RFC1918 or user supplied data.
@@ -328,7 +317,6 @@ def udpdiscovery(header,data):
         # If the UDP source port is less than or equal to 8000 and this is a host that does not exist in the HostIntelligence table, log the data and alert the user.
         hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
         if hostExists is None and udpSourcePort <= 8000:
-	    tempData = udpHdr.get_data_as_string()
             prebellicoLog(("-=-Host Recon-=-\nA new host was identified with an open UDP port: %s:%s") % (sourceIp, udpSourcePort))
             prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openUdpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, udpSourcePort, destIp, dev, devip ] )
 
@@ -342,7 +330,7 @@ def udpdiscovery(header,data):
                     prebellicoDb('writeToDb', 'update HostIntelligence set openUdpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newUdpPorts, timeStamp(), sourceIp] )
                     prebellicoLog(("-=-Host Recon Update-=-\nA new open UDP port was discovered for %s. This host has the following open UDP ports: %s") % (sourceIp, newUdpPorts))
 
-        #If we see someone scanning for SNMP using community strings, alert the user to the names that are used, and the source host that it is coming from. Typically this is a an IT/Security event, so this is attributed to 'Skynet'
+        # If we see someone scanning for SNMP using community strings, alert the user to the names that are used, and the source host that it is coming from. Typically this is a an IT/Security event, so this is attributed to 'Skynet'
         if udpDestPort == 161:
             snmpPacketFilterRegex = re.compile('[a-zA-Z0-9.*].*')# Regex to yank data within snmp string data
             snmpTempData=snmpPacketFilterRegex.findall(tempData)
@@ -505,7 +493,6 @@ def tcppushdiscovery(header,data):
                 hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
                 knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
                 if hostExists is None and knownExternalHost is None:
-                    tempData = tcpHdr.get_data_as_string()
                     prebellicoLog(("-=-TCP Push discovery-=-\nA new host was discovered with what appears to be an open TCP port - %s:%s. %s is talking to this service.") % ( sourceIp, sourcePort, destIp ))
                     prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openTcpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, sourcePort, destIp, dev, devip ] )
                 return
@@ -536,7 +523,6 @@ def tcppushdiscovery(header,data):
                 hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', destIp)
                 knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', destIp)
                 if hostExists is None and knownExternalHost is None:
-                    tempData = tcpHdr.get_data_as_string()
                     prebellicoLog(("-=-TCP Push discovery-=-\n%s appears to be talking to a newly discovered host on an open TCP port - %s:%s.") % ( sourceIp, destIp, destPort ))
                     prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, discoveryInterface, interfaceIp) values (?,?,?,?,?,?)', [ timeStamp(), timeStamp(), destIp, destMac, dev, devip] )
                 return
@@ -566,7 +552,6 @@ def tcppushdiscovery(header,data):
                 hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
                 knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
                 if hostExists is None and knownExternalHost is None:
-                    tempData = tcpHdr.get_data_as_string()
                     prebellicoLog(("-=-TCP Push discovery-=-\nA new host was discovered %s, which is talking to %s:%s.") % ( sourceIp, destIp, destPort ))
                     prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, discoveryInterface, interfaceIp) values (?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, dev, devip ] )
 
@@ -712,7 +697,6 @@ def synackdiscovery(header, data):
         hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
         knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
         if hostExists is None and knownExternalHost is None:
-            tempData = tcpHdr.get_data_as_string()
             prebellicoLog(("-=-Host Recon-=-\nA new host was identified with an open TCP port: %s:%s") % (sourceIp, sourcePort))
             prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openTcpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, sourcePort, destIp, dev, devip ] )
             return
