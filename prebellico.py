@@ -587,7 +587,7 @@ def tcppushdiscovery(header,data):
                             if numberOfServiceClients >= 5:
                                 prebellicoLog(("-=-TCP Push discovery-=-\nIntelligence confirms that %s:%s is a heavily used network service. While pooling data, %s clients where found to be interacting with this service.") % ( sourceIp, sourcePort, numberOfServiceClients ))
                                 enterpriseService = str(sourceIp) + ":" + str(sourcePort)
-                                prebellicoDb('writeToDb', 'insert into NetworkIntelligence set recordType = "enterpriseService", data = (?), associatedHost = (?), methodObtained = (?), dateObserved = (?), sourceInterface = (?)', [ enterpriseService, sourceIp, "passiveNetwork", timeStamp(), dev ] )
+                                prebellicoDb('writeToDb', 'insert into NetworkIntelligence ( recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface ) values ( "enterpriseService", ?, ?, "passiveNetwork", ?, ? )', [ enterpriseService, sourceIp, timeStamp(), dev ] )
                                 prebellicoDb('writeToDb', 'delete from TcpPushSessionTracking where sourceIP = (?) and sourcePort = (?)', [ sourceIp, sourcePort ] )
                 return
 
