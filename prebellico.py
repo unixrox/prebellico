@@ -173,10 +173,23 @@ def inspectproto(header, data):
 
 	# Start to decode the packet, determine the protocol number and call the appropriate method.
 	ethernetPacket = decoder.decode(data)
+        ethernetProtoId = ethernetPacket.child().child().get_protoID() 
+        ethernetOUI = ethernetPacket.child().child().get_OUI() 
+
+        # If we were able to identify a protocol, extract the protocol number, otherwise, further inspect the ethernet packet.
         if hasattr(ethernetPacket.child().child(), 'protocol'):
 	    protocolNumber = ethernetPacket.child().child().protocol
-        else:
+
+        # If this is a VTP/DTP packet, call a function to manage this frame. This is not precise.
+        elif ethernetProtoId == 8196 and ethernetOUI == 12:
+            ciscoVtpDtpDetection(header, data)
             return
+
+        # If we have no idea what this is, simply return.
+        else:        
+            return
+
+        # If we were able to determine the protocol number, call the correct function to handle the protococl.
 	if protocolNumber == 1:
 		#print("\nThis is an ICMP packet.")
 		icmpdiscovery(header,data)
@@ -231,6 +244,34 @@ def inspectproto(header, data):
 		#print("\nThe protocol number in this packet is %s. This is not TCP.") % ( protocolnumber )
 		#print("\nEnd of the inspectproto method.\n")
 		return
+
+
+# Function designed to alert the user to potential VTP/DTP packets, indicating potential DTP support.
+def ciscoVtpDtpDetection(header, data):
+
+    # Work to extract data and validate that we are supposed to be here
+    ethernetPacket = decoder.decode(data)
+    ethernetProtoId = ethernetPacket.child().child().get_protoID() 
+    ethernetOUI = ethernetPacket.child().child().get_OUI() 
+
+    if ethernetProtoId != 8196 and ethernetOUI != 12:
+        return
+
+    ciscoVtpDtpDetection = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "ciscoVtpDtpDetection" and data=(?)', "1")
+    if ciscoVtpDtpDetection is None:
+        prebellicoLog('-=-Layer2/3 Recon-=-\nCisco VTP/DTP is spoken here. It might be possible to trunk this port! If so, no VLAN domain is safe!')
+        prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, methodObtained, dateObserved, sourceInterface) values ("ciscoVtpDtpDetection","1","passiveNetwork",?,?)', [ timeStamp(), dev ] )
+    ciscoVtpDtpTempData = ethernetPacket.child().child().child().get_buffer_as_string()
+    ciscoVtpDtpDomainFilterRegex = re.compile('[a-zA-Z0-9.*].*')# Regex to yank vlan domain data within buffer string
+    ciscoVtpDtpTempData =  ciscoVtpDtpDomainFilterRegex.findall(ciscoVtpDtpTempData)
+    potentialVtpDtpDomainName = re.split('[\x00-\x1f,\x7f-\xff]',ciscoVtpDtpTempData[0])
+    for justTheDomainName in potentialVtpDtpDomainName:
+        if len(justTheDomainName) >=3:
+            ciscoVtpDtpDomainName = justTheDomainName
+            knownCiscoVtpDtpDomainName = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "ciscoVtpDtpDomainName" and data=(?)', ciscoVtpDtpDomainName) 
+            if knownCiscoVtpDtpDomainName is None:
+                prebellicoLog(('-=-Layer2/3 Recon-=-\nIdentified a VTP/DTP domain name: %s') % ( ciscoVtpDtpDomainName ))
+                prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, methodObtained, dateObserved, sourceInterface) values ("ciscoVtpDtpDomainName",?,"passiveNetwork",?,?)', [ ciscoVtpDtpDomainName, timeStamp(), dev ] )
 
 
 # Function designed to sniff out intel tied to ICMP traffic
