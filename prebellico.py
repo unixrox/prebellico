@@ -334,24 +334,30 @@ def udpdiscovery(header,data):
         if udpDestPort == 161:
             snmpPacketFilterRegex = re.compile('[a-zA-Z0-9.*].*')# Regex to yank data within snmp string data
             snmpTempData=snmpPacketFilterRegex.findall(tempData)
-            potentialSnmpStrings = re.split('[\x00-\x1f,\x7f-\xff]',snmpTempData[0])
-            for justTheString in potentialSnmpStrings:
-                if len(justTheString) >= 4:
-                    communityString = justTheString
-                    knownSnmpString = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "observedSnmp" and data=(?)', communityString)
-                    knownSkynetSystem = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "skynet" and data=(?)', sourceIp)
-                    if knownSkynetSystem is None:
-                        prebellicoLog(("-=-Skynet Recon-=-\nA new security system has been identified: %s.") % ( sourceIp ))
-                        prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("skynet", ?, ?, "passiveNetwork", ?, ?)', [ sourceIp, sourceIp, timeStamp(), dev ] )
-                    if knownSnmpString is None:
-                        prebellicoLog(("-=-Skynet Recon-=-\n%s is scanning for systems with an SNMPv1 community string: %s") % ( sourceIp, communityString ))
-                        prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("observedSnmp",?,?,"passiveNetwork",?,?)', [ communityString, sourceIp, timeStamp(), dev ] )
+            if len(snmpTempData) == 0:
+                return
+            else:
+                potentialSnmpStrings = re.split('[\x00-\x1f,\x7f-\xff]',snmpTempData[0])
+                for justTheString in potentialSnmpStrings:
+                    if len(justTheString) >= 4:
+                        communityString = justTheString
+                        knownSnmpString = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "observedSnmp" and data=(?)', communityString)
+                        knownSkynetSystem = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "skynet" and data=(?)', sourceIp)
+                        if knownSkynetSystem is None:
+                            prebellicoLog(("-=-Skynet Recon-=-\nA new security system has been identified: %s.") % ( sourceIp ))
+                            prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("skynet", ?, ?, "passiveNetwork", ?, ?)', [ sourceIp, sourceIp, timeStamp(), dev ] )
+                        if knownSnmpString is None:
+                            prebellicoLog(("-=-Skynet Recon-=-\n%s is scanning for systems with an SNMPv1 community string: %s") % ( sourceIp, communityString ))
+                            prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("observedSnmp",?,?,"passiveNetwork",?,?)', [ communityString, sourceIp, timeStamp(), dev ] )
 
 
 	# If we have a response from a host on port 161, notify the user and extract the SNMP string - note this is buggy as there is not SNMP packet verification
 	if udpSourcePort == 161:
-		snmpPacketFilterRegex = re.compile('[a-zA-Z0-9.*].*(?=:)')# Regex to yank data before colon within snmp string data
-		snmpTempData=snmpPacketFilterRegex.findall(tempData)
+	    snmpPacketFilterRegex = re.compile('[a-zA-Z0-9.*].*(?=:)')# Regex to yank data before colon within snmp string data
+	    snmpTempData=snmpPacketFilterRegex.findall(tempData)
+            if len(snmpTempData) == 0:
+                return
+            else:
                 potentialSnmpStrings = re.split('[\x00-\x1f,\x7f-\xff]',snmpTempData[0])
                 for justTheString in potentialSnmpStrings:
                     if len(justTheString) >= 4:
@@ -464,7 +470,6 @@ def tcppushdiscovery(header,data):
 
         # If a TCP push packet is discovered from a previously unknown session, work to process it
         if ( tcpPsh == 1 and tcpAck == 1 ):
-            #portexists = 0
 
             # Work to determine if these are known internal IP addresses based upon RFC1918 or user supplied data.
             (sourceMatch, destMatch) = ( checkinternaladdress(sourceIp), checkinternaladdress(destIp) )
@@ -519,7 +524,8 @@ def tcppushdiscovery(header,data):
 
             # If the inverse of a session using TCP ports less than 1024 exist, extract intel and alert the user.
             if ( sourcePort > 1024 and destPort <= 1024 ):
-                        # If the host does not exist in the HostIntelligence table, log the data and alert the user.
+
+                # If the host does not exist in the HostIntelligence table, log the data and alert the user.
                 hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', destIp)
                 knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', destIp)
                 if hostExists is None and knownExternalHost is None:
@@ -548,6 +554,7 @@ def tcppushdiscovery(header,data):
 
             # If we have a situation where we are not sure where the server is, because both ports are above 1024, work to pool intel to determine where the server is.
             if ( sourcePort > 1024 and destPort > 1024 ):
+                
                 # If the host does not exist in the HostIntelligence table, log the data and alert the user.
                 hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
                 knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
@@ -555,10 +562,34 @@ def tcppushdiscovery(header,data):
                     prebellicoLog(("-=-TCP Push discovery-=-\nA new host was discovered %s, which is talking to %s:%s.") % ( sourceIp, destIp, destPort ))
                     prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, discoveryInterface, interfaceIp) values (?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, dev, devip ] )
 
-                # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
-                getKnownTcpPorts = prebellicoDb('readFromDb', 'select openTcpPorts from HostIntelligence where ipAddress=(?)', sourceIp)
-                if getKnownTcpPorts is not None:
-                    newTcpPorts = checkUnique(getKnownTcpPorts, sourcePort, 'int')
+                # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. 
+                getKnownTcpPortsSourceHost = prebellicoDb('readFromDb', 'select openTcpPorts from HostIntelligence where ipAddress=(?)', sourceIp)
+
+                # Since we do not know which system has the server service, assume that the destination host is hosting the service and consult the HostIntelligence db for host/port information.
+                getKnownTcpPortsDestHost = prebellicoDb('readFromDb', 'select openTcpPorts from HostIntelligence where ipAddress=(?)', destIp)
+
+                # Check each open port to see if the ports from the client or the server are a match, if they are, disregard the packet
+                # Going to have to do this via psuedo code for now as the space bug will impact this but I see this going someting along the lines of:
+                #
+                #   skipIntelPooling = 0
+                #   for index in range(len(getKnownTcpPortsSourceHost)):
+                #       if getKnownTcpPortsSourceHost[index] == sourcePort:
+                #           skipIntelPooling = 1
+                #
+                #   for index in range(len(getKnownTcpPortsDestHost)):
+                #       if getKnownTcpPortsDestHost[index] == destPort:
+                #           skipIntelPooling = 1
+                #
+                #   if skipIntelPooling == 1
+                #   return()
+                #
+                #
+                #
+
+
+                # If this is a new port for the source host and the dest port and IP do not match anything withing the HostIntelligence DB, assuming this is a new server we don't know anything about so work to gather as much information about the hosts and ports, update the database and alert the user.
+                if getKnownTcpPortsSourceHost is not None:
+                    newTcpPorts = checkUnique(getKnownTcpPortsSourceHost, sourcePort, 'int')
                     if newTcpPorts != 0:
                         prebellicoLog(("-=-TCP Push discovery-=-\nThere appears to be a TCP based conversation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening TCP service.") % ( sourceIp, sourcePort, destIp, destPort ))
                 
