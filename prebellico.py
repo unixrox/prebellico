@@ -173,7 +173,10 @@ def inspectproto(header, data):
 
 	# Start to decode the packet, determine the protocol number and call the appropriate method.
 	ethernetPacket = decoder.decode(data)
-	protocolNumber = ethernetPacket.child().child().protocol
+        if hasattr(ethernetPacket.child().child(), 'protocol'):
+	    protocolNumber = ethernetPacket.child().child().protocol
+        else:
+            return
 	if protocolNumber == 1:
 		#print("\nThis is an ICMP packet.")
 		icmpdiscovery(header,data)
@@ -942,7 +945,7 @@ if readPcapFile is None and dev is not None:
 # Set a filter for data based upon user preferences.
 includeInterface=args['subsume']
 extraPcapSyntax=args['extra']
-filter = ("ip or arp or aarp and not host 0.0.0.0")
+filter = ("ether[20:2] == 0x2004 or ip or arp or aarp and not host 0.0.0.0")
 if includeInterface is False and readPcapFile is None:
     filter = filter + (" and not host %s") % ( devip )
 if extraPcapSyntax is not None:
