@@ -1041,7 +1041,7 @@ def sitrepQuery():
             print("\n* Several HSRP passwords were recovered:")
         getHsrpPasswords = prebellicoDb('readFromDb', 'select data from NetworkIntelligence where recordType = (?)', "hsrp", readMany="yes" )
         print(', '.join([str(i[0]) for i in getHsrpPasswords]))
-        print("\nConsider reusing this password else where for suspected system accounts and system adminsitrative passwords. If you know how to pull it off, with permission from the target organization, consider a MitM ('Man in the Middle') attack at OSI layer 3 by becoming a failover router and forcing the cluster to fail over to your node. *WARNING* This is dangerous if you do not know what you are doing or if your host cannot handle the traffic. It is better to report this than to attempt to exploit it if you do not know what you are doing.")
+        print("\nConsider reusing this password elsewhere for suspected system accounts and system adminsitrative passwords. If you know how to pull it off, with permission from the target organization, consider a MitM ('Man in the Middle') attack at OSI layer 3 by becoming a failover router and forcing the cluster to fail over to your node. *WARNING* This is dangerous if you do not know what you are doing or if your host cannot handle the traffic. It is better to report this than to attempt to exploit it if you do not know what you are doing.")
     if countKnownHostsWithDescriptions[0] is not 0:
         if countKnownHostsWithDescriptions[0] is 1: 
             print("\n* At least one host provides a description about itself:")
