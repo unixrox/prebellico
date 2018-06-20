@@ -69,7 +69,7 @@ def checkPrebellicoDb():
 
 
 # Function to open and close the DB, as well as return data as required
-def prebellicoDb(queryType, statement, data):
+def prebellicoDb(queryType, statement, data, **keywordDbSearchParameters):
     sqliteDbFile=args['db']
     if sqliteDbFile is None:
         sqliteDbFile='prebellico.db'
@@ -85,7 +85,10 @@ def prebellicoDb(queryType, statement, data):
 
     # If the request is to read data from the DB, read the data from the DB.
     if queryType is 'readFromDb':
-        returnData=db.fetchone()
+        if ('readMany' in keywordDbSearchParameters):
+            returnData=db.fetchall()
+        else:
+            returnData=db.fetchone()
 
     # If the request is to write data to the DB, post the data.
     elif queryType is 'writeToDb':
@@ -361,7 +364,7 @@ def udpdiscovery(header,data):
                 
         # If the UDP source port is less than or equal to 8000 and this is a host that does not exist in the HostIntelligence table, log the data and alert the user.
         hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
-        if hostExists is None and udpSourcePort <= 8000:
+        if hostExists is None and sourceMatch and udpSourcePort <= 8000:
             prebellicoLog(("-=-Host Recon-=-\nA new host was identified with an open UDP port: %s:%s") % (sourceIp, udpSourcePort))
             prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openUdpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, udpSourcePort, destIp, dev, devip ] )
 
@@ -478,7 +481,7 @@ def udpdiscovery(header,data):
                                     prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("hsrp",?,?,"passiveNetwork",?,?)', [ hsrpPass, sourceIp, timeStamp(), dev ] )
                             elif knownHsrpPassword is None: 
                                     prebellicoLog(('-=-Layer2/3 Recon-=-\nWe have an HSRP packet with an unhashed password: %s') % ( hsrpPass ))
-                                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterfvace) values ("hsrp",?,?,"passiveNetwork",?,?)', [ hsrpPass, sourceIp, timeStamp(), dev ] )
+                                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("hsrp",?,?,"passiveNetwork",?,?)', [ hsrpPass, sourceIp, timeStamp(), dev ] )
                 except:
                     pass
 	return
@@ -912,6 +915,188 @@ def checkPrebellicoWaitTimer():
         prebellicoReconPhaseShift = 1
     return(prebellicoReconPhaseShift)
 
+
+###
+### Prebellico Query Intel Functions
+###
+
+def sitrepQuery():
+    print("\nQuerying the Prebellico database for an overall SITREP on network reconnissiance.\n")
+
+    # Gather the facts from the Prebellico db
+    checkDtp = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "ciscoVtpDtpDetection") 
+    countKnownNet = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "knownNet" ) 
+    countKnownHosts = prebellicoDb('readFromDb', 'select count (distinct ipAddress) from HostIntelligence where ipAddress != (?)', "Null" )
+    countKnownHostsWithOpenTcpPorts = prebellicoDb('readFromDb', 'select count (distinct ipAddress) from HostIntelligence where openTcpPorts != (?)', "Null" )
+    countKnownHostsWithOpenTcpPorts = list(countKnownHostsWithOpenTcpPorts)
+    countKnownHostsWithOpenUdpPorts = prebellicoDb('readFromDb', 'select count (distinct ipAddress) from HostIntelligence where  openUdpPorts != (?)', "Null" )
+    countKnownHostsWithOpenUdpPorts = list(countKnownHostsWithOpenUdpPorts)
+    countKnownHostsWithDescriptions = prebellicoDb('readFromDb', 'select count (distinct ipAddress) from HostIntelligence where hostDescription != (?)', "Null" ) 
+    countValidatedSnmp = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "validatedSnmp" ) 
+    countObservedSnmp = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "observedSnmp" ) 
+    countUsername = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "username" ) 
+    countPassword = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "password" ) 
+    countDomain = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "domain" ) 
+    countHsrp = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "hsrp" ) 
+    allHsrp = prebellicoDb('readFromDb', 'select data from NetworkIntelligence where recordType = (?)', "hsrp", readMany="yes" ) 
+    countEgressMethod = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "egressMethod" ) 
+    countExternalHost = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "externalHost" ) 
+    countSkynet = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "skynet" ) 
+    countEnterpriseService = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "enterpriseService" ) 
+
+    # Provide a high level summary about what we know about this environment
+    if countKnownHosts[0] is not 0:
+        if countKnownHosts[0] is 1:
+            print("%d network host has been identified.") % ( countKnownHosts )
+        else:
+            print("%s network hosts have been identified, %s of which have known open TCP ports, %s have known open UDP ports and %s have unique host descriptions.") % ( countKnownHosts[0], countKnownHostsWithOpenTcpPorts[0], countKnownHostsWithOpenUdpPorts[0], countKnownHostsWithDescriptions[0] )  
+    if countKnownNet[0] is not 0:
+        if countKnownNet[0] is 1:
+            print("%d network has been identified.") % ( countKnownNet )
+        else:
+            print("%d networks have been identified.") % ( countKnownNet )
+    if countValidatedSnmp[0] is not 0:
+        if countValidatedSnmp[0] is 1:
+            print("%d valid SNMPv1 password has been identified.") % ( countValidatedSnmp )
+        else:
+            print("%d valid SNMPv1 passwords have been identified.") % ( countValidatedSnmp )
+    if countObservedSnmp[0] is not 0:
+        if countObservedSnmp[0] is 1:
+            print("%d potential SNMPv1 password has been identified.") % ( countObservedSnmp )
+        else:
+            print("%d potential SNMPv1 passwords have been identified.") % ( countObservedSnmp )
+    if countUsername[0] is not 0:
+        if countUsername[0] is 1:
+            print("%d username has been identified.") % ( countUsername )
+        else:
+            print("%d usernames have been identified.") % ( countUsername )
+    if countPassword[0] is not 0:
+        if countPassword[0] is 1:
+            print("%d password has been identified.") % ( countPassword )
+        else:
+            print("%d passwords have been identified.") % ( countPassword )
+    if countDomain[0] is not 0:
+        if countDomain[0] is 1:
+            print("%d domain has been identified.") % ( countDomain )
+        else:
+            print("%d domains have been identified.") % ( countDomain )
+    if countHsrp[0] is not 0:
+        if countHsrp[0] is 1:
+            print("%d valid HSRP password has been identified.") % ( countHsrp )
+        else:
+            print("%d valid HSRP passwords have been identified.") % ( countHsrp )
+    if countEgressMethod[0] is not 0:
+        if countEgressMethod[0] is 1:
+            print("%d different method of network egress has been identified.") % ( countEgressMethod )
+        else:
+            print("%d different methods of network egress have been identified.") % ( countEgressMethod )
+    if countExternalHost[0] is not 0:
+        if countExternalHost[0] is 1:
+            print("%d external host that this network is interacting with has been identifed.") % ( countExternalHost )
+        else:
+            print("%d external hosts that this network is interacting with have been identifed.") % ( countExternalHost )
+    if countSkynet[0] is not 0:
+        if countSkynet[0] is 1:
+            print("%d potential security based device has been detected.") % ( countSkynet )
+        else:
+            print("%d security based devices have been detected.") % ( countSkynet )
+    if countEnterpriseService[0] is not 0:
+        if countEnterpriseService[0] is 1:
+            print("%d enterprise TCP service has been identified.") % ( countEnterpriseService )
+        else:
+            print("%d enterprise TCP services have been identified.") % ( countEnterpriseService )
+    if checkDtp[0] is not 0:
+        countVtpDomains = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "ciscoVtpDtpDomainName" ) 
+        allVtpDomains = prebellicoDb('readFromDb', 'select data from NetworkIntelligence where recordType = (?)', "ciscoVtpDtpDomainName", readMany="yes" ) 
+        print("Cisco VTP/DTP is spoken here. %s VTP domains have been detetected: %s")  % ( countVtpDomains[0], ', '.join([str(i[0]) for i in allVtpDomains]) )
+
+    # Offer some potential ways to attack this environment from what we know about it.
+    print("\nBased upon what we know about the environment so far, the following is recommended:")
+    if checkDtp[0] is not 0:
+        print("\n* It might be possible to trunk this port! If so, no VLAN is safe! If you are attacking this network, it is highly recommended that you abuse DTP to trunk this port to gain access to all availible VLANs. Consider trunking the port and allowing Prebellico to gather more intel on the environment, or alternatively, attempt to trunk the port and attack other hosts on other VLANs.")
+    if countValidatedSnmp[0] is not 0:
+        if countValidatedSnmp[0] is 1:
+            print("\n* %d validated SNMPv1 password has been identified for the following host:") % ( countValidatedSnmp )
+        else:
+            print("\n* %d validated SNMPv1 passwords have been identified for the following hosts:") % ( countValidatedSnmp )
+        getValidatedSnmp = prebellicoDb('readFromDb', 'select data, associatedHost from NetworkIntelligence where recordType = (?)', "validatedSnmp", readMany="yes" )
+        for validatedSnmpEntry in getValidatedSnmp:
+            print str(validatedSnmpEntry[0]) + " - " + str(validatedSnmpEntry[1])
+
+        print("\nIt is highly recommended that you login to these hosts via SNMPv1 and walk the MIB tree looking for intelligence as it is highly unlikely that this will trigger an alert since you are using a validated SNMPv1 password. Consider also targeting other hosts with the same password should the password be used throughout the environment. Also consider the potiential for administrative password reuse while targeting the environment.")
+    if countObservedSnmp[0] is not 0:
+        if countObservedSnmp[0] is 1:
+            print("\n* %d potential SNMPv1 password has been identified:") % ( countObservedSnmp )
+        else:
+            print("\n* %d potential SNMPv1 passwords have been identified:") % ( countObservedSnmp )
+        getObservedSnmp = prebellicoDb('readFromDb', 'select data from NetworkIntelligence where recordType = (?)', "observedSnmp", readMany="yes" )
+        print(', '.join([str(i[0]) for i in getObservedSnmp]))
+
+        print("\nSince these values were obtained from some sort of security or discovery device on the network, it means that the target organization expects to find hosts using these values. While slightly risky, consider spraying these SNMPv1 passwords against hosts with UDP port 161 open to see if they permit access to the devicce.")
+    if countHsrp[0] is not 0:
+
+        if countHsrp [0] is 1:
+            print("\n* At least one HSRP password was recovered:")
+        else:
+            print("\n* Several HSRP passwords were recovered:")
+        getHsrpPasswords = prebellicoDb('readFromDb', 'select data from NetworkIntelligence where recordType = (?)', "hsrp", readMany="yes" )
+        print(', '.join([str(i[0]) for i in getHsrpPasswords]))
+        print("\nConsider reusing this password else where for suspected system accounts and system adminsitrative passwords. If you know how to pull it off, with permission from the target organization, consider a MitM ('Man in the Middle') attack at OSI layer 3 by becoming a failover router and forcing the cluster to fail over to your node. *WARNING* This is dangerous if you do not know what you are doing or if your host cannot handle the traffic. It is better to report this than to attempt to exploit it if you do not know what you are doing.")
+    if countKnownHostsWithDescriptions[0] is not 0:
+        if countKnownHostsWithDescriptions[0] is 1: 
+            print("\n* At least one host provides a description about itself:")
+        else:
+            print("\n* Several hosts provide descriptions about themselves:")
+    getKnownHostsWithDescriptions = prebellicoDb('readFromDb', 'select ipAddress, hostname, hostDescription from HostIntelligence where hostDescription != (?)', "Null", readMany="yes" )
+    for knownHostsWithDescriptionsDetails in getKnownHostsWithDescriptions:
+        print str(knownHostsWithDescriptionsDetails[0]) + "'s hostname is '" + str(knownHostsWithDescriptionsDetails[1]) + "' and describes itself as '" + str(knownHostsWithDescriptionsDetails[2]) + "'"
+    if countKnownHostsWithDescriptions[0] is not 0:
+        print("\nConsider targeting one or more of these hosts if the host's description appears to be of some intreste to you. For instance, if the host description is 'password reset server' it might be worth hunting for some sort of network service to be able to interact with network or user accounts. Or perhaps the host description indicates an out of support operating system, making it more subject to known remote to root exploits.\n")
+
+
+def listCredentialsQuery():
+    print("\nQuerying the Prebellico database for a list of potential or validated credentials.")
+
+def listHostsQuery():
+    print("\nQuerying the Prebellico database for a lost of known hosts.")
+    knownHosts = prebellicoDb('readFromDb', 'select ipAddress from HostIntelligence where ipAddress != (?)', "Null", readMany="yes" )
+    print("\nPrebellico has discovered the following hosts:")
+    knownHosts = list(knownHosts)
+    knownHostsCount = len(knownHosts)
+    countKnownHosts = 0
+    while countKnownHosts < knownHostsCount:
+        hostHasDetails = 0
+        getHostDetails = prebellicoDb('readFromDb', 'select hostname, fqdn, domain, hostDescription, dualHomed, os, hostType, trustRelationships, openTcpPorts, openUdpPorts, zombieIpid, validatedSnmp, validatedUsernames, validatedPasswords, exploits, permittedEgress from HostIntelligence where ipAddress = (?)', knownHosts[countKnownHosts][0] )
+        getHostDetails = list(getHostDetails)
+        getHostDetailsCount = len(getHostDetails)
+        countGetHostDetails = 0
+        while countGetHostDetails < getHostDetailsCount:
+            if getHostDetails[countGetHostDetails] is not None:
+                hostHasDetails = 1
+            countGetHostDetails += 1 
+        if hostHasDetails == 1:
+            print("%s *") % knownHosts[countKnownHosts]
+        else:
+            print(knownHosts[countKnownHosts][0]) 
+        countKnownHosts += 1
+    print("\nHosts marked with an asterisk (*) are hosts that Prebellico has additional intelligence for. For additional details, execute Prebellico with the '--ip' flag and the host IP.")
+
+def listNetworksQuery():
+    print("\nQuerying the Prebellico database for all known networks.")
+    knownNetworks = prebellicoDb('readFromDb', 'select data from NetworkIntelligence where recordType = (?)', "knownNet", readMany="yes" )
+    print("\nPrebellico has observed the following networks, based off an assumed /24 bit netmask:") 
+    list(knownNetworks)
+    knownNetworksCount = len(knownNetworks)
+    countKnownNetworks = 0
+    while countKnownNetworks < knownNetworksCount:
+        print knownNetworks[countKnownNetworks][0]
+        countKnownNetworks += 1
+
+def listHostDetailsQuery(ipHost):
+    print("\nQuerying the Prebellico database for %s.") % ( ipHost )
+
+
+
 ###
 ### Prebellico variables and data dictionarires used throughout the application.
 ###
@@ -932,7 +1117,7 @@ tcpNetworkEgressPermitted = 0
 hsrpNotification = 0
 
 # Parse arguments from user via argparse
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser()#description="Prebellico reconnissiance options")
 parser.add_argument('-i', '--inf', help='Specify the interface you want Prebellico to listen on. By default Prebellico will hunt for interfaces and ask the user to specify an interface if one is not provided here.')
 parser.add_argument('-r', '--read', help='Specify a PCAP file to read from instead of a network interface. By default Prebellico assumes that traffic is to be read from a network interface.')
 parser.add_argument('-l', '--log', help='Specify an output file. By default Prebellico will log to "prebellico.out" if a logfile is not specified.')
@@ -946,14 +1131,73 @@ parser.add_argument('-s', '--subsume', help='Include traffic from the target int
 #parser.add_argument('-f', '--fireforeffect', help='After semipassive and semiaggressive attacks are complete, get aggressive by reading from a specified file and execute commands within that file against the provided targets.')
 #parser.add_argument('-g', '--greenlightdate', help='The specific date to execute commands within the "fireforeffect" file against the target list. This will require the defined wait period to pass, a list of targets, as well as all semipassive and semiagressive attacks to complete before these are carried out.')
 parser.add_argument('-q', '--quiet', help='Remove the Prebellico banner at the start of the script.', action='store_true')
-report = parser.add_mutually_exclusive_group()
-report.add_argument('--report', help='Provide a sitrep on all activity or provide specific details on a particular host or set of data.')
-
+report = parser.add_argument_group("Options to query intel obtained by Prebellico")
+report.add_argument('--report', help='Provide a high level SITREP on all observed network activity.', action='store_true')
+report.add_argument('--credentials', help='Provide a brief summary about credentials obtained by Prebellico.', action='store_true')
+report.add_argument('--listhosts', help='Provide a list of known internal hosts.', action='store_true')
+report.add_argument('--listnetworks', help='Provide a list of known networks, assuming a /24 netmask.', action='store_true')
+report.add_argument('--ip', help='Provide specific details about what Prebellico already knows about a host.')
 
 args = vars(parser.parse_args())
 
-# Call the prebellico banner if the user has not disabled this function
+# Parse arguments and detetermine user's intent to either sniff for traffic or report on obtained intel. Note: db can be used for either option, so it is not checked here
+# Execution options
+dev=args['inf']
+readPcapFile=args['read']
+logfile=args['log']
+trackUpdateTime = args['wait']
+includeInterface=args['subsume']
+extraPcapSyntax=args['extra']
 showBanner=args['quiet']
+
+# Reporting options
+sitrep=args['report']
+listCredentials=args['credentials']
+listHosts=args['listhosts']
+listNetworks=args['listnetworks']
+listHostDetails=args['ip']
+
+# Work to enforce one query per call to query the database
+queryIntelOptions = 0 
+if sitrep is not False:
+    queryIntelOptions += 1
+if listCredentials is not False:
+    queryIntelOptions += 1
+if listHosts is not False:
+    queryIntelOptions += 1
+if listNetworks is not False:
+    queryIntelOptions += 1
+if listHostDetails is not None:
+    queryIntelOptions += 1
+
+# Nobody needs to see the banner while querying the database
+if queryIntelOptions > 0:
+    showBanner = 'true'
+
+# Work to enforce execution options
+if (dev is not None or readPcapFile is not None or logfile is not None or includeInterface is not False or extraPcapSyntax is not None) and (queryIntelOptions > 0):
+    print("\nYou specificed both reconnissiance and query options. This is not supported. For a list of supported options, please execute Prebellico with the '-h' or '--help' flags. Please try again.")
+    exit(1)
+if queryIntelOptions > 1:
+    print("\nYou specified more than one intel query against Prebellico. You can only specify one query at a time, along with specifying the '-d' or '-db' option to specify the Prebellico database you want to query. Please try again.")
+    exit(1)
+
+# If an intel query is called, disable the banner, call the appropriate function and exit.
+if queryIntelOptions > 0:
+    showBanner = 'true'
+    if sitrep is not False:
+        sitrepQuery()
+    if listCredentials is not False:
+        listCredentialsQuery()
+    if listHosts is not False:
+        listHostsQuery()
+    if listNetworks is not False:
+        listNetworksQuery()
+    if listHostDetails is not None:
+        listHostDetailsQuery(listHostDetails)
+    exit(0)
+
+# Call the prebellico banner if the user has not disabled this function
 if showBanner is False:
     prebellicoBanner()
 
@@ -961,7 +1205,6 @@ if showBanner is False:
 checkPrebellicoDb()
 
 # Setting logging parameters
-logfile=args['log']
 if logfile is None:
     logging.basicConfig(filename='prebellico.log', format='%(message)s', level=logging.INFO)
 else:
@@ -970,8 +1213,6 @@ console = logging.StreamHandler()
 logging.getLogger('').addHandler(console)
 
 # Determine if a device or file has been specififed. If the user requested to listen from a file instead of a network interface, ensure that both are not used. If a device or file has not been specified, hunt for compatible devices and ask the user to select a compatible device - Note, this is a bit of a hack, but it works.
-dev=args['inf']
-readPcapFile=args['read']
 if readPcapFile is not None and dev is not None:
     print("\nReading from both a PCAP file and sniffing from an interface at the same time is not permitted. Consider processing the PCAP before or after sniffing from a live interface, refrencing the same Prebellico database.")
     exit()
@@ -985,11 +1226,9 @@ if readPcapFile is None and dev is None:
     print("\nAn interface or a PCAP file was not provided.")
     dev = getInterface()
 if readPcapFile is None and dev is not None:
-    ( devip, sniff) = sniffInterface(dev)
+    ( devip, sniff ) = sniffInterface(dev)
 
 # Set a filter for data based upon user preferences.
-includeInterface=args['subsume']
-extraPcapSyntax=args['extra']
 filter = ("ether[20:2] == 0x2004 or ip or arp or aarp and not host 0.0.0.0")
 if includeInterface is False and readPcapFile is None:
     filter = filter + (" and not host %s") % ( devip )
@@ -1004,7 +1243,6 @@ except PcapError, e:
     exit()
 
 # If the user has set a timer to shift into another form of agressive reconnissiance, generate a timer timestamp to use as a baseline.
-trackUpdateTime = args['wait']
 if trackUpdateTime is not None:
     initialReconUpdateTimeCheck = 0 # Used for initial setup with the inspectproto updateReconCheckTimer function.
     updateWaitTime = trackUpdateTime
