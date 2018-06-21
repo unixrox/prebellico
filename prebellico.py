@@ -1064,21 +1064,32 @@ def listHostsQuery():
     knownHosts = list(knownHosts)
     knownHostsCount = len(knownHosts)
     countKnownHosts = 0
+    unsortedIpAddresses = []
     while countKnownHosts < knownHostsCount:
-        hostHasDetails = 0
-        getHostDetails = prebellicoDb('readFromDb', 'select hostname, fqdn, domain, hostDescription, dualHomed, os, hostType, trustRelationships, openTcpPorts, openUdpPorts, zombieIpid, validatedSnmp, validatedUsernames, validatedPasswords, exploits, permittedEgress from HostIntelligence where ipAddress = (?)', knownHosts[countKnownHosts][0] )
-        getHostDetails = list(getHostDetails)
-        getHostDetailsCount = len(getHostDetails)
-        countGetHostDetails = 0
-        while countGetHostDetails < getHostDetailsCount:
-            if getHostDetails[countGetHostDetails] is not None:
-                hostHasDetails = 1
-            countGetHostDetails += 1 
-        if hostHasDetails == 1:
-            print("%s *") % knownHosts[countKnownHosts]
-        else:
-            print(knownHosts[countKnownHosts][0]) 
+        unsortedIpAddresses.append(str(knownHosts[countKnownHosts][0]))
         countKnownHosts += 1
+    knownHosts = sorted(unsortedIpAddresses, key=lambda ip: long(''.join(["%02X" % long(i) for i in ip.split('.')]), 16))
+    knownHostsCount = len(knownHosts)
+    countKnownHosts = 0
+    while countKnownHosts < knownHostsCount:
+        checkKnownHostInternalMatch = checkinternaladdress(knownHosts[countKnownHosts])
+        if checkKnownHostInternalMatch: 
+            hostHasDetails = 0
+            getHostDetails = prebellicoDb('readFromDb', 'select hostname, fqdn, domain, hostDescription, dualHomed, os, hostType, trustRelationships, openTcpPorts, openUdpPorts, zombieIpid, validatedSnmp, validatedUsernames, validatedPasswords, exploits, permittedEgress from HostIntelligence where ipAddress = (?)', knownHosts[countKnownHosts] )
+            getHostDetails = list(getHostDetails)
+            getHostDetailsCount = len(getHostDetails)
+            countGetHostDetails = 0
+            while countGetHostDetails < getHostDetailsCount:
+                if getHostDetails[countGetHostDetails] is not None:
+                    hostHasDetails = 1
+                countGetHostDetails += 1 
+            if hostHasDetails == 1:
+                print("%s *") % knownHosts[countKnownHosts]
+            else:
+                print(knownHosts[countKnownHosts]) 
+            countKnownHosts += 1
+        else:
+            countKnownHosts += 1
     print("\nHosts marked with an asterisk (*) are hosts that Prebellico has additional intelligence for. For additional details, execute Prebellico with the '--ip' flag and the host IP.")
 
 def listNetworksQuery():
