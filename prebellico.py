@@ -1048,8 +1048,19 @@ def sitrepQuery():
         else:
             print("\n* Several hosts provide descriptions about themselves:")
     getKnownHostsWithDescriptions = prebellicoDb('readFromDb', 'select ipAddress, hostname, hostDescription from HostIntelligence where hostDescription != (?)', "Null", readMany="yes" )
-    for knownHostsWithDescriptionsDetails in getKnownHostsWithDescriptions:
-        print str(knownHostsWithDescriptionsDetails[0]) + "'s hostname is '" + str(knownHostsWithDescriptionsDetails[1]) + "' and describes itself as '" + str(knownHostsWithDescriptionsDetails[2]) + "'"
+    knownHostsWithDescriptions = list(getKnownHostsWithDescriptions)
+    knownHostsWithDescriptionsCount = len(knownHostsWithDescriptions)
+    countNumberOfKnownHostsWithDescriptions = 0
+    unsortedIpAddresses = []
+    while countNumberOfKnownHostsWithDescriptions < knownHostsWithDescriptionsCount:
+        unsortedIpAddresses.append(str(knownHostsWithDescriptions[countNumberOfKnownHostsWithDescriptions][0]))
+        countNumberOfKnownHostsWithDescriptions += 1 
+    knownHostsWithDescriptions = sorted(unsortedIpAddresses, key=lambda ip: long(''.join(["%02X" % long(i) for i in ip.split('.')]), 16))
+    countNumberOfKnownHostsWithDescriptions = 0
+    while countNumberOfKnownHostsWithDescriptions < knownHostsWithDescriptionsCount:
+        getKnownHostsWithDescription = prebellicoDb('readFromDb', 'select ipAddress, hostname, hostDescription from HostIntelligence where ipAddress = (?)', knownHostsWithDescriptions[countNumberOfKnownHostsWithDescriptions])
+        print getKnownHostsWithDescription[0] + "'s hostname is '" + getKnownHostsWithDescription[1] + "' and describes itself as '" + getKnownHostsWithDescription[2] + "'"
+        countNumberOfKnownHostsWithDescriptions += 1 
     if countKnownHostsWithDescriptions[0] is not 0:
         print("\nConsider targeting one or more of these hosts if the host's description appears to be of some intreste to you. For instance, if the host description is 'password reset server' it might be worth hunting for some sort of network service to be able to interact with network or user accounts. Or perhaps the host description indicates an out of support operating system, making it more subject to known remote to root exploits.\n")
 
