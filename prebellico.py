@@ -615,7 +615,7 @@ def tcppushdiscovery(header,data):
                 # If the host does not exist in the HostIntelligence table, log the data and alert the user.
                 hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
                 knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
-                if hostExists is None and sourceMatch and sourceMatch and knownExternalHost is None:
+                if hostExists is None and sourceMatch and destMatch and knownExternalHost is None:
                     prebellicoLog(("-=-TCP Push discovery-=-\nA new host was discovered %s, which is talking to %s:%s.") % ( sourceIp, destIp, destPort ))
                     prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, discoveryInterface, interfaceIp) values (?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, dev, devip ] )
 
@@ -628,26 +628,27 @@ def tcppushdiscovery(header,data):
                 # Check each open port to see if the ports from the client or the server are a match, if they are, disregard the packet
                 # Going to have to do this via psuedo code for now as the space bug will impact this but I see this going someting along the lines of:
                 #
-                #   skipIntelPooling = 0
-                #   for index in range(len(getKnownTcpPortsSourceHost)):
-                #       if getKnownTcpPortsSourceHost[index] == sourcePort:
-                #           skipIntelPooling = 1
-                #
-                #   for index in range(len(getKnownTcpPortsDestHost)):
-                #       if getKnownTcpPortsDestHost[index] == destPort:
-                #           skipIntelPooling = 1
-                #
-                #   if skipIntelPooling == 1
-                #   return()
-                #
-                #
-                #
-
+                skipIntelPooling = 0
+                if getKnownTcpPortsSourceHost is not None:
+                    for index in range(len(getKnownTcpPortsSourceHost)):
+                        if getKnownTcpPortsSourceHost[index] == sourcePort:
+                            print("\n\n\n\nWe have a match for knowTcpPortsSourceHost.\n\n\n\n")
+                            skipIntelPooling = 1
+                if getKnownTcpPortsDestHost is not None: 
+                    for index in range(len(getKnownTcpPortsDestHost)):
+                        if getKnownTcpPortsDestHost[index] == destPort:
+                            print("\n\n\n\nWe have a match for knowTcpPortsSourceHost.\n\n\n\n")
+                            skipIntelPooling = 1
+                
+                if skipIntelPooling == 1:
+                    return()
 
                 # If this is a new port for the source host and the dest port and IP do not match anything withing the HostIntelligence DB, assuming this is a new server we don't know anything about so work to gather as much information about the hosts and ports, update the database and alert the user.
-                if getKnownTcpPortsSourceHost[0] is not None:
-                    newTcpPorts = checkUnique(getKnownTcpPortsSourceHost, sourcePort, 'int')
-                    if newTcpPorts != 0:
+                #if getKnownTcpPortsSourceHost[0] is not None:
+                #    newTcpPorts = checkUnique(getKnownTcpPortsSourceHost, sourcePort, 'int')
+                #    if newTcpPorts == 0:
+                #        return
+                else:
                         prebellicoLog(("-=-TCP Push discovery-=-\nThere appears to be a TCP based conversation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening TCP service.") % ( sourceIp, sourcePort, destIp, destPort ))
                 
                         # Utilize the tcpPushSessionTracking data dictionary to pool intelligence about push sessions to find a common source port on a reoccuring host.
@@ -668,7 +669,7 @@ def tcppushdiscovery(header,data):
                         # If the sourcePort appears to be associated with numerous other hosts on numerous other destPorts, report this to the user, store it in the HostIntelligence database, and clear the TcpPushSessionTracking database as this data will no longer be needed.
                         if sourcePortCount >= 3 and destIpCount >= 2 and nonDestIpCount >= 1:
                             prebellicoLog(("-=-TCP Push discovery-=-\nIntelligence confirms that %s is the server with open TCP port %s.") % ( sourceIp, sourcePort ))
-                            prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), sourceIp ] )
+                            prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ sourcePort, timeStamp(), sourceIp ] )
 
                             # Determine if this is a widely used service, such as a network proxy. If so, alert the user and log the data to the NetworkIntel db.
                             numberOfServiceClients = int(list(prebellicoDb('readFromDb', 'select count (distinct destIp) from TcpPushSessionTracking where sourceIp = (?) and sourcePort = (?)', [ sourceIp, sourcePort ] ))[0])
@@ -784,7 +785,7 @@ def synackdiscovery(header, data):
         # If the host does not exist in the HostIntelligence table, log the data and alert the user.
         hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
         knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
-        if hostExists is None and knownExternalHost is None and sourceMatch and sourceMatch:
+        if hostExists is None and knownExternalHost is None and sourceMatch and destMatch:
             prebellicoLog(("-=-Host Recon-=-\nA new host was identified with an open TCP port: %s:%s") % (sourceIp, sourcePort))
             prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openTcpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, sourcePort, destIp, dev, devip ] )
             return
