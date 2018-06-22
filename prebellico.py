@@ -364,19 +364,22 @@ def udpdiscovery(header,data):
                 
         # If the UDP source port is less than or equal to 8000 and this is a host that does not exist in the HostIntelligence table, log the data and alert the user.
         hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
-        if hostExists is None and sourceMatch and udpSourcePort <= 8000:
+        if hostExists is None and sourceMatch and destMatch and udpSourcePort <= 8000:
             prebellicoLog(("-=-Host Recon-=-\nA new host was identified with an open UDP port: %s:%s") % (sourceIp, udpSourcePort))
             prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openUdpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, udpSourcePort, destIp, dev, devip ] )
 
         # If this is a previous host and the port is less than 8000 (which is just an arbitary number - have to start somewhere), update the ports for the host.
-        if hostExists is not None and udpSourcePort <=8000:
+        if hostExists is not None and destMatch and sourceMatch and udpSourcePort <=8000:
             # Using the source IP address, lookup open UDP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
             getKnownUdpPorts = prebellicoDb('readFromDb', 'select openUdpPorts from HostIntelligence where ipAddress=(?)', sourceIp)
-            if getKnownUdpPorts is not None:
+            if getKnownUdpPorts[0] is not None:
                 newUdpPorts = checkUnique(getKnownUdpPorts, udpSourcePort, 'int')
                 if newUdpPorts != 0:
                     prebellicoDb('writeToDb', 'update HostIntelligence set openUdpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newUdpPorts, timeStamp(), sourceIp] )
                     prebellicoLog(("-=-Host Recon Update-=-\nA new open UDP port was discovered for %s. This host has the following open UDP ports: %s") % (sourceIp, newUdpPorts))
+            else:
+                prebellicoDb('writeToDb', 'update HostIntelligence set openUdpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ udpSourcePort, timeStamp(), sourceIp] )
+                prebellicoLog(("-=-Host Recon Update-=-\nA new open UDP port was discovered for %s. This host has the following open UDP ports: %s") % (sourceIp, udpSourcePort))
 
         # If we see someone scanning for SNMP using community strings, alert the user to the names that are used, and the source host that it is coming from. Typically this is a an IT/Security event, so this is attributed to 'Skynet'
         if udpDestPort == 161:
@@ -540,29 +543,32 @@ def tcppushdiscovery(header,data):
                     prebellicoLog(("-=-Egress Recon Update-=-\n%s is permitted to connect to %s on TCP port %s.") % (destIp, sourceIp, sourcePort))
 
             # If completely arbitrary numbers based off of assumed sessions exist where the source port is less than 1024, extract intel and alert the user.
-            if ( sourcePort <= 1024 and destPort > 1024 ):
+            if ( sourcePort <= 1024 and destPort > 1024 and sourceMatch and destMatch):
 
                 # If the host does not exist in the HostIntelligence table, log the data and alert the user.
                 hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
                 knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
-                if hostExists is None and knownExternalHost is None:
+                if hostExists is None and destMatch and sourceMatch and knownExternalHost is None:
                     prebellicoLog(("-=-TCP Push discovery-=-\nA new host was discovered with what appears to be an open TCP port - %s:%s. %s is talking to this service.") % ( sourceIp, sourcePort, destIp ))
                     prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openTcpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, sourcePort, destIp, dev, devip ] )
                 return
 
                 # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
                 getKnownTcpPorts = prebellicoDb('readFromDb', 'select openTcpPorts from HostIntelligence where ipAddress=(?)', sourceIp)
-                if getKnownTcpPorts is not None:
+                if getKnownTcpPorts[0] is not None:
                     newTcpPorts = checkUnique(getKnownTcpPorts, sourcePort, 'int')
                     if newTcpPorts != 0:
                         prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), sourceIp ] )
                         prebellicoLog(("-=-TCP Push discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( sourceIp, sourcePort, destIp ))
+                else:
+                    prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ sourcePort, timeStamp(), sourceIp ] )
+                    prebellicoLog(("-=-TCP Push discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( sourceIp, sourcePort, destIp ))
                 # Using the source IP address, look up known trusted hosts and see if this is a new trusted host. If it is, log this and alert the user.
                 getKnownTrustedHosts = prebellicoDb('readFromDb', 'select trustRelationships from HostIntelligence where ipAddress = (?)', sourceIp)
-                if getKnownTrustedHosts is None:
+                if getKnownTrustedHosts[0] is None:
                     prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?) where ipAddress = (?)', [ destIp, timeStamp(), sourceIp] )
                     prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s") % (sourceIp, destIp))
-                elif getKnownTrustedHosts is not None:
+                elif getKnownTrustedHosts[0] is not None:
                     newTrustedHosts = checkUnique(getKnownTrustedHosts, destIp, 'string')
                     if newTrustedHosts != 0:
                         prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s") % (sourceIp, newTrustedHosts))
@@ -571,29 +577,32 @@ def tcppushdiscovery(header,data):
                 return
 
             # If the inverse of a session using TCP ports less than 1024 exist, extract intel and alert the user.
-            if ( sourcePort > 1024 and destPort <= 1024 ):
+            if ( sourcePort > 1024 and destPort <= 1024 and sourceMatch and destMatch):
 
                 # If the host does not exist in the HostIntelligence table, log the data and alert the user.
                 hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', destIp)
                 knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', destIp)
-                if hostExists is None and knownExternalHost is None:
+                if hostExists is None and destMatch and sourceMatch and knownExternalHost is None:
                     prebellicoLog(("-=-TCP Push discovery-=-\n%s appears to be talking to a newly discovered host on an open TCP port - %s:%s.") % ( sourceIp, destIp, destPort ))
                     prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, discoveryInterface, interfaceIp) values (?,?,?,?,?,?)', [ timeStamp(), timeStamp(), destIp, destMac, dev, devip] )
                 return
 
                 # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
                 getKnownTcpPorts = prebellicoDb('readFromDb', 'select openTcpPorts from HostIntelligence where ipAddress=(?)', destIp)
-                if getKnownTcpPorts is not None:
+                if getKnownTcpPorts[0] is not None:
                     newTcpPorts = checkUnique(getKnownTcpPorts, destPort, 'int')
                     if newTcpPorts != 0:
                         prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), destIp ] )
                         prebellicoLog(("-=-TCP Push discovery-=-\n%s appears to be talking to an open TCP port - %s:%s.") % ( sourceIp, destIp, destPort ))
+                else:
+                    prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ sourcePort, timeStamp(), sourceIp ] )
+                    prebellicoLog(("-=-TCP Push discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( sourceIp, sourcePort, destIp ))
 
                 getKnownTrustedHosts = prebellicoDb('readFromDb', 'select trustRelationships from HostIntelligence where ipAddress = (?)', destIp)
-                if getKnownTrustedHosts is None:
+                if getKnownTrustedHosts[0] is None:
                     prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?)  where ipAddress = (?)', [ sourceIp, timeStamp(), destIp ] )
                     prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s") % (destIp, sourceIp))
-                elif getKnownTrustedHosts is not None:
+                elif getKnownTrustedHosts[0] is not None:
                     newTrustedHosts = checkUnique(getKnownTrustedHosts, sourceIp, 'string')
                     if newTrustedHosts != 0:
                         prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s") % (destIp, newTrustedHosts))
@@ -601,12 +610,12 @@ def tcppushdiscovery(header,data):
                 return
 
             # If we have a situation where we are not sure where the server is, because both ports are above 1024, work to pool intel to determine where the server is.
-            if ( sourcePort > 1024 and destPort > 1024 ):
+            if ( sourcePort > 1024 and destPort > 1024 and sourceMatch and destMatch):
                 
                 # If the host does not exist in the HostIntelligence table, log the data and alert the user.
                 hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
                 knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
-                if hostExists is None and knownExternalHost is None:
+                if hostExists is None and sourceMatch and sourceMatch and knownExternalHost is None:
                     prebellicoLog(("-=-TCP Push discovery-=-\nA new host was discovered %s, which is talking to %s:%s.") % ( sourceIp, destIp, destPort ))
                     prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, discoveryInterface, interfaceIp) values (?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, dev, devip ] )
 
@@ -636,7 +645,7 @@ def tcppushdiscovery(header,data):
 
 
                 # If this is a new port for the source host and the dest port and IP do not match anything withing the HostIntelligence DB, assuming this is a new server we don't know anything about so work to gather as much information about the hosts and ports, update the database and alert the user.
-                if getKnownTcpPortsSourceHost is not None:
+                if getKnownTcpPortsSourceHost[0] is not None:
                     newTcpPorts = checkUnique(getKnownTcpPortsSourceHost, sourcePort, 'int')
                     if newTcpPorts != 0:
                         prebellicoLog(("-=-TCP Push discovery-=-\nThere appears to be a TCP based conversation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening TCP service.") % ( sourceIp, sourcePort, destIp, destPort ))
@@ -775,24 +784,27 @@ def synackdiscovery(header, data):
         # If the host does not exist in the HostIntelligence table, log the data and alert the user.
         hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
         knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
-        if hostExists is None and knownExternalHost is None:
+        if hostExists is None and knownExternalHost is None and sourceMatch and sourceMatch:
             prebellicoLog(("-=-Host Recon-=-\nA new host was identified with an open TCP port: %s:%s") % (sourceIp, sourcePort))
             prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openTcpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, sourcePort, destIp, dev, devip ] )
             return
 
         # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
         getKnownTcpPorts = prebellicoDb('readFromDb', 'select openTcpPorts from HostIntelligence where ipAddress=(?)', sourceIp)
-        if getKnownTcpPorts is not None:
+        if getKnownTcpPorts[0] is not None and destMatch and sourceMatch:
             newTcpPorts = checkUnique(getKnownTcpPorts, sourcePort, 'int')
             if newTcpPorts != 0:
                 prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), sourceIp ] )
                 prebellicoLog(("-=-Host Recon Update-=-\nA new open TCP port was discovered for %s. This host has the following open TCP ports: %s") % (sourceIp, newTcpPorts))
+        else:
+            prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ sourcePort, timeStamp(), sourceIp ] )
+            prebellicoLog(("-=-Host Recon Update-=-\nA new open TCP port was discovered for %s. This host has the following open TCP ports: %s") % (sourceIp, sourcePort))
 
         getKnownTrustedHosts = prebellicoDb('readFromDb', 'select trustRelationships from HostIntelligence where ipAddress = (?)', sourceIp)
-        if getKnownTrustedHosts is None:
+        if getKnownTrustedHosts[0] is None and destMatch and sourceMatch:
             prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?) where ipAddress = (?)', [ destIp, timeStamp(), sourceIp ] )
             prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s") % (sourceIp, destIp))
-        elif getKnownTrustedHosts is not None:
+        elif getKnownTrustedHosts[0] is not None and destMatch and sourceMatch:
             newTrustedHosts = checkUnique(getKnownTrustedHosts, destIp, 'string')
             if newTrustedHosts != 0:
                 prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s") % (sourceIp, newTrustedHosts))
@@ -802,35 +814,39 @@ def synackdiscovery(header, data):
 
 # Function to deal with the shenanigans of how data is returned from and stored to the sqlite db. This basically takes the tuple returned from a single row/column in the DB and validates if something new has been discovered, and if so, returns an ordered string that can later be retrieved in the same manner.
 def checkUnique(currentList, newValue, sortType):
-    newValue = newValue
     countKnownValues = 0
     notifyUserOfNewValue = 0
     while countKnownValues < len(currentList):
-        if currentList[countKnownValues] == newValue:
+        if currentList[countKnownValues][0] == newValue:
             notifyUserOfNewValue = 1
-            countKnownValues += 1
+        countKnownValues += 1
 
         # If this really is a unique value add it to the list of values for additional checks.
         if notifyUserOfNewValue == 0:
 
-            # I know what you are thinking. Why!?!? The stackoverflow gods hate me for this but after many hours of blood sweat and tears I finally got this POS funtion to work with what was once an easy task with data dictionaries, so there is your answer. 
-            knownValues = list(currentList)
-            knownValues.append(newValue)
-            newValues = str(knownValues)
+            # I know what you are thinking. Why!?!? The stackoverflow gods hate me for this but after many hours of blood sweat and tears I finally got this POS funtion to work with what was once an easy task with data dictionaries, so there is your answer.
+
+            knownValues = currentList
+            newValues = [0]
+            knownValuesLen = len(knownValues)
+            newValuesCount = 0
+            while newValuesCount < knownValuesLen:
+                newValues[newValuesCount] = knownValues[newValuesCount]
+                newValuesCount += 1
+            newValues.append(newValue)
+            newValues = str(newValues)
             newValues = newValues.strip('[')
             newValues = newValues.strip(']')
             newValues = newValues.replace(",", "")
             newValues = newValues.replace("'", "")
             newValues = newValues.replace("u", "")
-            newValues = newValues.replace("None", "")
             tempValues = newValues.split(" ")
             countTempValues = len(tempValues)
             tempValues = list(set(tempValues))
-            #if sortType == 'int':
-            #    tempValues.sort(key=int)
-            #else:
-            #    tempValues.sort
-            tempValues.sort
+            if sortType == 'int':
+                tempValues.sort(key=int)
+            else:
+                tempValues.sort
             countSortedTempValues = len(tempValues)
             newValues = str(tempValues)
             newValues = newValues.strip('[')
@@ -838,14 +854,15 @@ def checkUnique(currentList, newValue, sortType):
             newValues = newValues.replace(",", "")
             newValues = newValues.replace("'", "")
             newValues = newValues.replace("u", "")
-            newValues = newValues.replace("None", "")
 
             # If something truly has changed, store this in a temp var and pass it to the user, otherwise, return a 0.
             if countTempValues == countSortedTempValues:
                 sortedString = newValues
             else:
                 sortedString = 0
-            return(sortedString)
+        else:
+            sortedString = 0
+    return(sortedString)
 
 
 # Function to get an interface from the user, should one not have been provided by the user.
