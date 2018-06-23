@@ -669,7 +669,12 @@ def tcppushdiscovery(header,data):
                         # If the sourcePort appears to be associated with numerous other hosts on numerous other destPorts, report this to the user, store it in the HostIntelligence database, and clear the TcpPushSessionTracking database as this data will no longer be needed.
                         if sourcePortCount >= 3 and destIpCount >= 2 and nonDestIpCount >= 1:
                             prebellicoLog(("-=-TCP Push discovery-=-\nIntelligence confirms that %s is the server with open TCP port %s.") % ( sourceIp, sourcePort ))
-                            prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ sourcePort, timeStamp(), sourceIp ] )
+                            if getKnownTcpPortsSourceHost[0] is not None:
+                                newTcpPorts = checkUnique(getKnownTcpPortsSourceHost, sourcePort, 'int')
+                                if newTcpPorts != 0:
+                                    prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), sourceIp ] )
+                                else:
+                                    prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ sourcePort, timeStamp(), sourceIp ] )
 
                             # Determine if this is a widely used service, such as a network proxy. If so, alert the user and log the data to the NetworkIntel db.
                             numberOfServiceClients = int(list(prebellicoDb('readFromDb', 'select count (distinct destIp) from TcpPushSessionTracking where sourceIp = (?) and sourcePort = (?)', [ sourceIp, sourcePort ] ))[0])
