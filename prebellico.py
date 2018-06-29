@@ -380,7 +380,7 @@ def udpDiscovery(header,data):
 
         # Using the source IP address, lookup open UDP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
         countGetKnownUdpPorts = prebellicoDb('readFromDb', 'select count (openUdpPorts) from HostIntelligence where ipAddress=(?)', sourceIp )
-        if countGetKnownUdpPorts != 0:
+        if countGetKnownUdpPorts[0] != 0:
             getKnownUdpPorts = prebellicoDb('readFromDb', 'select openUdpPorts from HostIntelligence where ipAddress=(?)', sourceIp )
             newUdpPorts = checkUnique(getKnownUdpPorts, udpSourcePort, 'int')
             if newUdpPorts != 0:
@@ -646,22 +646,22 @@ def tcpPushDiscovery(header,data):
 
             # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
             countGetKnownTcpPorts = prebellicoDb('readFromDb', 'select count (openTcpPorts) from HostIntelligence where ipAddress=(?)', sourceIP)
-            if countGetKnownTcpPorts != 0:
+            if countGetKnownTcpPorts[0] != 0:
                 getKnownTcpPorts = prebellicoDb('readFromDb', 'select openTcpPorts from HostIntelligence where ipAddress=(?)', sourceIp )
                 newTcpPorts = checkUnique(getKnownTcpPorts, sourcePort, 'int')
                 if str(newTcpPorts) != '0':
                     prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), sourceIp ] )
                     prebellicoLog(("-=-TCP Push Discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( sourceIp, sourcePort, destIp ))
-            elif countGetKnownTcpPorts == 0:
+            elif countGetKnownTcpPorts[0] == 0:
                 prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ sourcePort, timeStamp(), sourceIp ] )
                 prebellicoLog(("-=-TCP Push Discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( sourceIp, sourcePort, destIp ))
 
             # Using the source IP address, look up known trusted hosts and see if this is a new trusted host. If it is, log this and alert the user.
             countGetKnownTrustedHosts = prebellicoDb('readFromDb', 'select count(trustRelationships) from HostIntelligence where ipAddress = (?)', sourceIp )
-            if countGetKnownTrustedHosts == 0:
+            if countGetKnownTrustedHosts[0] == 0:
                 prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?) where ipAddress = (?)', [ destIp, timeStamp(), sourceIp] )
                 prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s.") % (sourceIp, destIp))
-            elif countGetKnownTrustedHosts != 0:
+            elif countGetKnownTrustedHosts[0] != 0:
                 getKnownTrustedHosts = prebellicoDb('readFromDb', 'select trustRelationships from HostIntelligence where ipAddress = (?)', sourceIp)
                 newTrustedHosts = checkUnique(getKnownTrustedHosts, destIp, 'string')
                 if newTrustedHosts != 0:
@@ -682,21 +682,21 @@ def tcpPushDiscovery(header,data):
 
             # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
             countGetKnownTcpPorts = prebellicoDb('readFromDb', 'select count (openTcpPorts) from HostIntelligence where ipAddress=(?)', destIp )
-            if countGetKnownTcpPorts != 0:
+            if countGetKnownTcpPorts[0] != 0:
                 getKnownTcpPorts = prebellicoDb('readFromDb', 'select openTcpPorts from HostIntelligence where ipAddress=(?)', destIp )
                 newTcpPorts = checkUnique(getKnownTcpPorts, destPort, 'int')
                 if str(newTcpPorts) != '0':
                     prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), destIp ] )
                     prebellicoLog(("-=-TCP Push Discovery-=-\n%s appears to be talking to an open TCP port - %s:%s.") % ( sourceIp, destIp, destPort ))
-            elif countGetKnownTcpPorts == 0:
+            elif countGetKnownTcpPorts[0] == 0:
                 prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ sourcePort, timeStamp(), sourceIp ] )
                 prebellicoLog(("-=-TCP Push Discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( sourceIp, sourcePort, destIp ))
 
             countGetKnownTrustedHosts = prebellicoDb('readFromDb', 'select count(trustRelationships) from HostIntelligence where ipAddress = (?)', destIp )
-            if countGetKnownTrustedHosts == 0:
+            if countGetKnownTrustedHosts[0] == 0:
                 prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?)  where ipAddress = (?)', [ sourceIp, timeStamp(), destIp ] )
                 prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s.") % (destIp, sourceIp))
-            elif countGetKnownTrustedHosts != 0:
+            elif countGetKnownTrustedHosts[0] != 0:
                 getKnownTrustedHosts = prebellicoDb('readFromDb', 'select trustRelationships from HostIntelligence where ipAddress = (?)', destIp )
                 newTrustedHosts = checkUnique(getKnownTrustedHosts, sourceIp, 'string')
                 if newTrustedHosts != 0:
@@ -900,24 +900,24 @@ def synAckDiscovery(header, data):
 
     # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
     countGetKnownTcpPorts = prebellicoDb('readFromDb', 'select count(openTcpPorts) from HostIntelligence where ipAddress=(?)', sourceIp )
-    if countGetKnownTcpPorts != 0 and destMatch and sourceMatch:
+    if countGetKnownTcpPorts[0] != 0 and destMatch and sourceMatch:
         getKnownTcpPorts = prebellicoDb('readFromDb', 'select openTcpPorts from HostIntelligence where ipAddress=(?)', sourceIp )
         newTcpPorts = checkUnique(getKnownTcpPorts, sourcePort, 'int')
         if str(newTcpPorts) != '0':
             prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), sourceIp ] )
             prebellicoLog(("-=-Host Recon Update-=-\nA new open TCP port was discovered for %s. This host has the following open TCP ports: %s.") % (sourceIp, newTcpPorts))
-    elif countGetKnownTcpPorts == 0 and destMatch and sourceMatch:
+    elif countGetKnownTcpPorts[0] == 0 and destMatch and sourceMatch:
         prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ sourcePort, timeStamp(), sourceIp ] )
         prebellicoLog(("-=-Host Recon Update-=-\nA new open TCP port was discovered for %s. This host has the following open TCP ports: %s.") % (sourceIp, sourcePort))
 
     countGetKnownTrustedHosts = prebellicoDb('readFromDb', 'select count(trustRelationships) from HostIntelligence where ipAddress = (?)', sourceIp )
-    if countGetKnownTrustedHosts != 0 and destMatch and sourceMatch:
+    if countGetKnownTrustedHosts[0] != 0 and destMatch and sourceMatch:
         getKnownTrustedHosts = prebellicoDb('readFromDb', 'select trustRelationships from HostIntelligence where ipAddress = (?)', sourceIp )
         newTrustedHosts = checkUnique(getKnownTrustedHosts, destIp, 'string')
         if newTrustedHosts != 0:
             prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s.") % (sourceIp, newTrustedHosts))
             prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?) where ipAddress = (?)', [ newTrustedHosts, timeStamp(), sourceIp ] )
-    elif countGetKnownTrustedHosts == 0 and destMatch and sourceMatch:
+    elif countGetKnownTrustedHosts[0] == 0 and destMatch and sourceMatch:
         prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?) where ipAddress = (?)', [ destIp, timeStamp(), sourceIp ] )
         prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s.") % (sourceIp, destIp))
     return
@@ -1220,10 +1220,10 @@ def listHostsQuery():
             getHostDetailsCount = len(getHostDetails)
             countGetHostDetails = 0
             while countGetHostDetails < getHostDetailsCount:
-                if getHostDetails[countGetHostDetails] is not None:
-                    hostHasDetails = 1
+                if str(getHostDetails[countGetHostDetails]) != 'None':
+                    hostHasDetails += 1
                 countGetHostDetails += 1
-            if hostHasDetails == 1:
+            if hostHasDetails > 1:
                 print("%s *") % knownHosts[countKnownHosts]
             else:
                 print(knownHosts[countKnownHosts])
@@ -1231,6 +1231,7 @@ def listHostsQuery():
         else:
             countKnownHosts += 1
     print("\nHosts marked with an asterisk (*) are hosts that Prebellico has additional intelligence for. For additional details, execute Prebellico with the '--ip' flag and the host IP.")
+
 
 def listNetworksQuery():
     print("\nQuerying the Prebellico database for all known networks.")
@@ -1260,6 +1261,75 @@ def listNetworksQuery():
 def listHostDetailsQuery(ipHost):
     print("\nQuerying the Prebellico database for %s.") % ( ipHost )
 
+    # Validate that this is a real IP address.
+    ipHostOctets = ipHost.split('.')
+    ipHostOctets = [ int(x) for x in ipHostOctets ]
+    countIpHostOctets = len(ipHostOctets)
+    if ipHostOctets[0] > 255 or ipHostOctets[1] > 255 or ipHostOctets[2] > 255 or ipHostOctets[3] > 255 or countIpHostOctets != 4:
+        print("%s is not a real network IP address. You must supply a real IP address with this option. Please try again.") % (ipHost)
+        exit(1)
+
+    # Validate this is a routeable IP address that does not belong to a broadcast domain.
+    if ((ipHostOctets[0] == 255) or (ipHostOctets[0] == 224) or (ipHostOctets[0] == 240) or (ipHostOctets[1] == 255 and ipHostOctets[3] == 255) or (ipHostOctets[2] == 255 and ipHostOctets[3] == 255) or (ipHostOctets[2] < 255 and ipHostOctets[3] == 255)):
+        print("%s is a network broadcast address. You must supply a real routeable non-broadcast network IP address with this option. Please try again.") % (ipHost)
+        exit(1)
+
+    # Validate that the host is within the database.
+    checkValidKnownHost = prebellicoDb('readFromDb', 'select count (ipAddress) from HostIntelligence where ipAddress=(?)', ipHost )
+    if checkValidKnownHost[0] == 0:
+        print("Prebellico knows nothing about %s. Are you sure you have the right host IP address? Please try again.") % (ipHost)
+        exit(1)
+    elif checkValidKnownHost[0] == 1:
+        hostDetails = []
+        getHostDetails = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', ipHost)
+        for element in getHostDetails:
+            hostDetails.append(element)
+        print("\nPrebellico knows the following about this host:\n")
+        if str(hostDetails[1]) != 'None':
+            print("First discovered: %s") % (hostDetails[1])
+        if str(hostDetails[2]) != 'None':
+            print("Last Update: %s") % (hostDetails[2])
+        if str(hostDetails[3]) != 'None':
+            print("IP Address: %s") % (hostDetails[3])
+        if str(hostDetails[4]) != 'None':
+            print("MAC Address: %s") % (hostDetails[4])
+        if str(hostDetails[5]) != 'None':
+            print("Hostname: %s") % (hostDetails[5])
+        if str(hostDetails[6]) != 'None':
+            print("FQDN: %s") % (hostDetails[6])
+        if str(hostDetails[7]) != 'None':
+            print("Domain Affiliations: %s") % (hostDetails[7])
+        if str(hostDetails[8]) != 'None':
+            print("Host Description: %s") % (hostDetails[8])
+        if str(hostDetails[9]) != 'None':
+            print("Dual Homed: %s") % (hostDetails[9])
+        if str(hostDetails[10]) != 'None':
+            print("Operating System: %s") % (hostDetails[10])
+        if str(hostDetails[11]) != 'None':
+            print("Host Type: %s") % (hostDetails[11])
+        if str(hostDetails[12]) != 'None':
+            print("Trusted Hosts: %s") % (hostDetails[12])
+        if str(hostDetails[13]) != 'None':
+            print("Confirmed open TCP ports: %s") % (hostDetails[13])
+        if str(hostDetails[14]) != 'None':
+            print("Confirmed open UDP ports: %s") % (hostDetails[14])
+        if str(hostDetails[15]) != 'None':
+            print("Predictable IPID sequence numbers: %s") % (hostDetails[15])
+        if str(hostDetails[16]) != 'None':
+            print("Validated SNMPv1 community string: %s") % (hostDetails[16])
+        if str(hostDetails[17]) != 'None':
+            print("Validated usernames: %s") % (hostDetails[17])
+        if str(hostDetails[18]) != 'None':
+            print("Validated passwords: %s") % (hostDetails[18])
+        if str(hostDetails[19]) != 'None':
+            print("Known Exploits: %s") % (hostDetails[19])
+        if str(hostDetails[20]) != 'None':
+            print("Permitted network egress: %s") % (hostDetails[20])
+        if str(hostDetails[21]) != 'None':
+            print("Discovery interface: %s") % (hostDetails[21])
+        if str(hostDetails[22]) != 'None':
+            print("Interface: %s") % (hostDetails[22])
+        exit(0)
 
 ###
 ### Prebellico variables and data dictionaries used throughout the application.
