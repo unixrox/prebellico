@@ -385,10 +385,10 @@ def udpDiscovery(header,data):
             newUdpPorts = checkUnique(getKnownUdpPorts, udpSourcePort, 'int')
             if newUdpPorts != 0:
                 prebellicoDb('writeToDb', 'update HostIntelligence set openUdpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newUdpPorts, timeStamp(), sourceIp] )
-                prebellicoLog(("-=-Host Recon Update-=-\nA new open UDP port was discovered for %s. This host has the following open UDP ports: %s.") % (sourceIp, newUdpPorts))
+                prebellicoLog(("-=-UDP Service Discovery-=-\nA new open UDP port was discovered for %s. This host has the following open UDP ports: %s.") % (sourceIp, newUdpPorts))
         else:
             prebellicoDb('writeToDb', 'update HostIntelligence set openUdpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ udpSourcePort, timeStamp(), sourceIp] )
-            prebellicoLog(("-=-Host Recon Update-=-\nA new open UDP port was discovered for %s. This host has the following open UDP ports: %s.") % (sourceIp, udpSourcePort))
+            prebellicoLog(("-=-UDP Service Discovery-=-\nA new open UDP port was discovered for %s. This host has the following open UDP ports: %s.") % (sourceIp, udpSourcePort))
 
     # If we have a situation where we are not sure where the server is, because both ports are above 1024, work to pool intel to determine where the UDP server is.
     if (udpSourcePort > 1024 and udpDestPort > 1024 and sourceMatch and destMatch) and ((udpSourcePort != 3389 and udpDestPort != 3389) or (udpSourcePort != 1985 and udpDestPort != 1985)):
@@ -640,7 +640,7 @@ def tcpPushDiscovery(header,data):
             hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
             knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
             if hostExists is None and destMatch and sourceMatch and knownExternalHost is None:
-                prebellicoLog(("-=-TCP Push Discovery-=-\nA new host was discovered with what appears to be an open TCP port - %s:%s. %s is talking to this service.") % ( sourceIp, sourcePort, destIp ))
+                prebellicoLog(("-=-TCP Service Discovery-=-\nA new host was discovered with what appears to be an open TCP port - %s:%s. %s is talking to this service.") % ( sourceIp, sourcePort, destIp ))
                 prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openTcpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, sourcePort, destIp, dev, devIp ] )
             return
 
@@ -651,10 +651,10 @@ def tcpPushDiscovery(header,data):
                 newTcpPorts = checkUnique(getKnownTcpPorts, sourcePort, 'int')
                 if str(newTcpPorts) != '0':
                     prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), sourceIp ] )
-                    prebellicoLog(("-=-TCP Push Discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( sourceIp, sourcePort, destIp ))
+                    prebellicoLog(("-=-TCP Service Discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( sourceIp, sourcePort, destIp ))
             elif countGetKnownTcpPorts[0] == 0:
                 prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ sourcePort, timeStamp(), sourceIp ] )
-                prebellicoLog(("-=-TCP Push Discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( sourceIp, sourcePort, destIp ))
+                prebellicoLog(("-=-TCP Service Discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( sourceIp, sourcePort, destIp ))
 
             # Using the source IP address, look up known trusted hosts and see if this is a new trusted host. If it is, log this and alert the user.
             countGetKnownTrustedHosts = prebellicoDb('readFromDb', 'select count(trustRelationships) from HostIntelligence where ipAddress = (?)', sourceIp )
@@ -676,7 +676,7 @@ def tcpPushDiscovery(header,data):
             hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', destIp)
             knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', destIp)
             if hostExists is None and destMatch and sourceMatch and knownExternalHost is None:
-                prebellicoLog(("-=-TCP Push Discovery-=-\n%s appears to be talking to a newly discovered host on an open TCP port - %s:%s.") % ( sourceIp, destIp, destPort ))
+                prebellicoLog(("-=-TCP Service Discovery-=-\n%s appears to be talking to a newly discovered host on an open TCP port - %s:%s.") % ( sourceIp, destIp, destPort ))
                 prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, discoveryInterface, interfaceIp) values (?,?,?,?,?,?)', [ timeStamp(), timeStamp(), destIp, destMac, dev, devIp] )
             return
 
@@ -687,10 +687,10 @@ def tcpPushDiscovery(header,data):
                 newTcpPorts = checkUnique(getKnownTcpPorts, destPort, 'int')
                 if str(newTcpPorts) != '0':
                     prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), destIp ] )
-                    prebellicoLog(("-=-TCP Push Discovery-=-\n%s appears to be talking to an open TCP port - %s:%s.") % ( sourceIp, destIp, destPort ))
+                    prebellicoLog(("-=-TCP Service Discovery-=-\n%s appears to be talking to an open TCP port - %s:%s.") % ( sourceIp, destIp, destPort ))
             elif countGetKnownTcpPorts[0] == 0:
                 prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ sourcePort, timeStamp(), sourceIp ] )
-                prebellicoLog(("-=-TCP Push Discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( sourceIp, sourcePort, destIp ))
+                prebellicoLog(("-=-TCP Service Discovery-=-\nThere appears to be an open TCP port on %s:%s, which is talking to %s.") % ( sourceIp, sourcePort, destIp ))
 
             countGetKnownTrustedHosts = prebellicoDb('readFromDb', 'select count(trustRelationships) from HostIntelligence where ipAddress = (?)', destIp )
             if countGetKnownTrustedHosts[0] == 0:
@@ -711,7 +711,7 @@ def tcpPushDiscovery(header,data):
             hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
             knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
             if hostExists is None and sourceMatch and destMatch and knownExternalHost is None:
-                prebellicoLog(("-=-TCP Push Discovery-=-\nA new host was discovered %s, which is talking to %s:%s.") % ( sourceIp, destIp, destPort ))
+                prebellicoLog(("-=-TCP Service Discovery-=-\nA new host was discovered %s, which is talking to %s:%s.") % ( sourceIp, destIp, destPort ))
                 prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, destIp, dev, devIp ] )
 
             # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet.
@@ -741,7 +741,7 @@ def tcpPushDiscovery(header,data):
 
             # If this is a new port for the source host and the dest port and IP do not match anything withing the HostIntelligence DB, assuming this is a new server we don't know anything about, work to gather as much information about the hosts and ports, update the database and alert the user.
             if skipIntelPoolingMessageUpdate != 1:
-                prebellicoLog(("-=-TCP Push Discovery-=-\nThere appears to be a TCP based conversation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening TCP service.") % ( sourceIp, sourcePort, destIp, destPort ))
+                prebellicoLog(("-=-TCP Service Discovery-=-\nThere appears to be a TCP based conversation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening TCP service.") % ( sourceIp, sourcePort, destIp, destPort ))
 
             # Utilize the tcpPushSessionTracking table to pool intelligence about push sessions to find a common source port on a reoccuring host.
             prebellicoDb('writeToDb', 'insert into TcpPushSessionTracking (sourceIp, sourcePort, destIp, destPort) values ((?),(?),(?),(?))', [ sourceIp, sourcePort, destIp, destPort] )
@@ -766,7 +766,7 @@ def tcpPushDiscovery(header,data):
 
             # If the sourcePort appears to be associated with numerous other hosts on numerous other destPorts, report this to the user, store it in the HostIntelligence database, and clear the TcpPushSessionTracking database as this data will no longer be needed.
             if (( sourcePortCount >= 3 and destIpCount >= 2 and nonDestIpCount >= 1 ) or (( destIpDistinctCount >= 2 and destPortDistinctCount >=2 ) and ( destIpDistinctCount == destPortDistinctCount ))) and skipIntelPoolingMessageUpdate != 1:
-                prebellicoLog(("-=-TCP Push Discovery-=-\nIntelligence confirms that %s is the host with open TCP port %s.") % ( sourceIp, sourcePort ))
+                prebellicoLog(("-=-TCP Service Discovery-=-\nIntelligence confirms that %s is the host with open TCP port %s.") % ( sourceIp, sourcePort ))
                 if str(getKnownTcpPortsSourceHost[0]) != 'None':
                     newTcpPorts = checkUnique(getKnownTcpPortsSourceHost, sourcePort, 'int')
                     if str(newTcpPorts) != '0':
@@ -777,7 +777,7 @@ def tcpPushDiscovery(header,data):
                 # Determine if this is a widely used service, such as a network proxy. If so, alert the user and log the data to the NetworkIntel db.
                 numberOfServiceClients = int(list(prebellicoDb('readFromDb', 'select count (distinct destIp) from TcpPushSessionTracking where sourceIp = (?) and sourcePort = (?)', [ sourceIp, sourcePort ] ))[0])
                 if numberOfServiceClients >= 5 and checkForKnownEnterpriseService == 0 :
-                    prebellicoLog(("-=-TCP Push Discovery-=-\nIntelligence confirms that %s:%s is a heavily used network service. While pooling data, %s clients where found to be interacting with this service.") % ( sourceIp, sourcePort, numberOfServiceClients ))
+                    prebellicoLog(("-=-TCP Service Discovery-=-\nIntelligence confirms that %s:%s is a heavily used network service. While pooling data, %s clients where found to be interacting with this service.") % ( sourceIp, sourcePort, numberOfServiceClients ))
                     enterpriseTcpService = str(sourceIp) + ":" + str(sourcePort)
                     prebellicoDb('writeToDb', 'insert into NetworkIntelligence ( recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface ) values ( "enterpriseTcpService", ?, ?, "passiveNetwork", ?, ? )', [ enterpriseTcpService, sourceIp, timeStamp(), dev ] )
 
@@ -905,10 +905,10 @@ def synAckDiscovery(header, data):
         newTcpPorts = checkUnique(getKnownTcpPorts, sourcePort, 'int')
         if str(newTcpPorts) != '0':
             prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newTcpPorts, timeStamp(), sourceIp ] )
-            prebellicoLog(("-=-Host Recon Update-=-\nA new open TCP port was discovered for %s. This host has the following open TCP ports: %s.") % (sourceIp, newTcpPorts))
+            prebellicoLog(("-=-TCP Service Discovery-=-\nA new open TCP port was discovered for %s. This host has the following open TCP ports: %s.") % (sourceIp, newTcpPorts))
     elif countGetKnownTcpPorts[0] == 0 and destMatch and sourceMatch:
         prebellicoDb('writeToDb', 'update HostIntelligence set openTcpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ sourcePort, timeStamp(), sourceIp ] )
-        prebellicoLog(("-=-Host Recon Update-=-\nA new open TCP port was discovered for %s. This host has the following open TCP ports: %s.") % (sourceIp, sourcePort))
+        prebellicoLog(("-=-TCP Service Discovery-=-\nA new open TCP port was discovered for %s. This host has the following open TCP ports: %s.") % (sourceIp, sourcePort))
 
     countGetKnownTrustedHosts = prebellicoDb('readFromDb', 'select count(trustRelationships) from HostIntelligence where ipAddress = (?)', sourceIp )
     if countGetKnownTrustedHosts[0] != 0 and destMatch and sourceMatch:
