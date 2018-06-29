@@ -1234,14 +1234,28 @@ def listHostsQuery():
 
 def listNetworksQuery():
     print("\nQuerying the Prebellico database for all known networks.")
-    knownNetworks = prebellicoDb('readFromDb', 'select data from NetworkIntelligence where recordType = (?)', "knownNet", readMany="yes" )
+    getKnownNetworks = prebellicoDb('readFromDb', 'select data from NetworkIntelligence where recordType = (?)', "knownNet", readMany="yes" )
     print("\nPrebellico has observed the following networks, based off an assumed /24 bit netmask:")
-    list(knownNetworks)
+    knownNetworks = list(getKnownNetworks)
+    knownNetworksCount = len(knownNetworks)
+    countKnownNetworks = 0
+    unsortedNetworkAddresses = []
+    while countKnownNetworks < knownNetworksCount:
+        networkAddress = knownNetworks[countKnownNetworks][0]
+        networkAddressOctets = networkAddress.split('.')
+        knownNetworkCidr = networkAddressOctets[0] + '.' + networkAddressOctets[1] + '.' + networkAddressOctets [2] + '.1'
+        unsortedNetworkAddresses.append(str(knownNetworkCidr))
+        countKnownNetworks += 1
+    knownNetworks = sorted(unsortedNetworkAddresses, key=lambda ip: long(''.join(["%02X" % long(i) for i in ip.split('.')]), 16))
     knownNetworksCount = len(knownNetworks)
     countKnownNetworks = 0
     while countKnownNetworks < knownNetworksCount:
-        print knownNetworks[countKnownNetworks][0]
+        networkAddress = knownNetworks[countKnownNetworks]
+        networkAddressOctets = networkAddress.split('.')
+        knownNetworkCidr = networkAddressOctets[0] + '.' + networkAddressOctets[1] + '.' + networkAddressOctets [2] + '.1/24'
+        print knownNetworkCidr
         countKnownNetworks += 1
+
 
 def listHostDetailsQuery(ipHost):
     print("\nQuerying the Prebellico database for %s.") % ( ipHost )
