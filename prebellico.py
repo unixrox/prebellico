@@ -1,9 +1,9 @@
 #!/usr/bin/python
 
 """
- Prebellico v1.0 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
+ Prebellico v1.1 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
  Written by Wiliam Suthers
- Shout out to the Impactet Team - you make this easy.
+ Shout out to the Impacket Team - you make this easy.
  Shout out to all those before me, those who invested in me, those who stand with me, and those who have yet to join our cause.
 """
 
@@ -47,6 +47,7 @@ def checkPrebellicoDb():
             db.execute('create table HostIntelligence(number integer primary key, firstObserved text, lastObserved text, ipAddress text, macAddy text, hostname text, fqdn text, domain text, hostDescription text, dualHomed text, os text, hostType text, trustRelationships text, openTcpPorts text, openUdpPorts text, zombieIpid text, validatedSnmp text, validatedUsernames text, validatedPasswords text, credentials text, exploits text, permittedEgress text, discoveryInterface text, interfaceIp text)')
             db.execute('create table NetworkIntelligence(id integer primary key, recordType text, data text, dateObserved text, associatedHost text, methodObtained text, sourceInterface text)')
             db.execute('create table TcpPushSessionTracking(number integer primary key, sourceIp text, sourcePort text, destIp text, destPort text)')
+            db.execute('create table UdpServerTracking(number integer primary key, sourceIp text, udpSourcePort text, destIp text, udpDestPort text)')
             db.execute('create table PrebellicoMeshNodes(id integer primary key, observerId text, role text, ipAddress text, connectionMethod text, networkEgress text, egressMethod text, c2Endpoint text, encryptionKey text)')
             db.execute('create table PrebellicoHostConfiguration(id integer primary key, executionDate text, flags text, interface text, ipAddress text, role text, c2Method text)')
             dbConnect.commit()
@@ -368,14 +369,14 @@ def udpDiscovery(header,data):
             prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("externalHost", ?, ?, "passiveNetwork", ?, ? )', [ sourceIp, destIp, timeStamp(), dev] )
             prebellicoLog(("-=-Egress Recon Update-=-\n%s is permitted to connect to %s on UDP port %s.") % (destIp, sourceIp, udpSourcePort))
 
-    # If the UDP source port is less than or equal to 8000 and this is a host that does not exist in the HostIntelligence table, log the data and alert the user.
+    # If the UDP source port is less than or equal to 1024 and this is a host that does not exist in the HostIntelligence table, log the data and alert the user.
     hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
-    if hostExists is None and sourceMatch and destMatch and udpSourcePort <= 8000:
+    if (hostExists is None and sourceMatch and destMatch) and (udpSourcePort <= 1024 or udpSourcePort == 3389 or udpSourcePort == 1985):
         prebellicoLog(("-=-Host Recon-=-\nA new host was identified with an open UDP port: %s:%s.") % (sourceIp, udpSourcePort))
         prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openUdpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, udpSourcePort, destIp, dev, devIp ] )
 
-    # If this is a previous host and the port is less than 8000 (which is just an arbitary number - have to start somewhere), update the ports for the host.
-    if hostExists is not None and destMatch and sourceMatch and udpSourcePort <=8000:
+    # If this is a previous host and the port is less than 1024 (which is just an arbitary number - have to start somewhere), update the ports for the host.
+    if (hostExists is not None and destMatch and sourceMatch) and (udpSourcePort <=1024 or udpSourcePort == 3389 or udpSourcePort == 1985):
 
         # Using the source IP address, lookup open UDP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
         countGetKnownUdpPorts = prebellicoDb('readFromDb', 'select count (openUdpPorts) from HostIntelligence where ipAddress=(?)', sourceIp )
@@ -388,6 +389,88 @@ def udpDiscovery(header,data):
         else:
             prebellicoDb('writeToDb', 'update HostIntelligence set openUdpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ udpSourcePort, timeStamp(), sourceIp] )
             prebellicoLog(("-=-Host Recon Update-=-\nA new open UDP port was discovered for %s. This host has the following open UDP ports: %s.") % (sourceIp, udpSourcePort))
+
+    # If we have a situation where we are not sure where the server is, because both ports are above 1024, work to pool intel to determine where the UDP server is.
+    if (udpSourcePort > 1024 and udpDestPort > 1024 and sourceMatch and destMatch) and ((udpSourcePort != 3389 and udpDestPort != 3389) or (udpSourcePort != 1985 and udpDestPort != 1985)):
+
+        # If the host does not exist in the HostIntelligence table, log the data and alert the user.
+        hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
+        knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
+        if hostExists is None and sourceMatch and destMatch and knownExternalHost is None:
+            prebellicoLog(("-=-UDP Service Discovery-=-\nA new host was discovered %s, which is talking to %s:%s.") % ( sourceIp, destIp, udpDestPort ))
+            prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, destIp, dev, devIp ] )
+
+        # Using the source IP address, lookup open UDP ports to see if they match the source port captured within the packet.
+        getKnownUdpPortsSourceHost = prebellicoDb('readFromDb', 'select openUdpPorts from HostIntelligence where ipAddress=(?)', sourceIp)
+
+        # Since we do not know which system has the server service, assume that the destination host is hosting the service and consult the HostIntelligence db for host/port information.
+        getKnownUdpPortsDestHost = prebellicoDb('readFromDb', 'select openUdpPorts from HostIntelligence where ipAddress=(?)', destIp)
+
+        # Check each open port to see if the ports from the client or the server are a match, if they are, disregard the packet.
+        skipIntelPoolingMessageUpdate = 0
+        if str(getKnownUdpPortsSourceHost) != 'None':
+            if str(getKnownUdpPortsSourceHost[0]) != 'None':
+                getKnownUdpPortsSourceHostList = str(getKnownUdpPortsSourceHost[0]).split(" ")
+                for index in range(len(getKnownUdpPortsSourceHostList)):
+                    if str(getKnownUdpPortsSourceHostList[index]) == str(udpSourcePort):
+                        skipIntelPoolingMessageUpdate = 1
+        if str(getKnownUdpPortsDestHost) != 'None':
+            if str(getKnownUdpPortsSourceHost[0]) != 'None':
+                getKnownUdpPortsDestHostList = str(getKnownUdpPortsDestHost[0]).split(" ")
+                for index in range(len(getKnownUdpPortsDestHostList)):
+                    if str(getKnownUdpPortsDestHostList[index]) == str(udpDestPort):
+                        skipIntelPoolingMessageUpdate = 1
+
+        checkForKnownUdpEnterpriseService = 0
+        enterpriseUdpService = str(sourceIp) + ":" + str(udpSourcePort)
+        checkForKnownUdpEnterpriseService = int(list(prebellicoDb('readFromDb', 'select count( data ) from NetworkIntelligence where recordType = (?) and data = (?)', [ "enterpriseUdpService", enterpriseUdpService ] ))[0])
+
+        # If this is a new port for the source host and the dest port and IP do not match anything withing the HostIntelligence DB, assuming this is a new server we don't know anything about, work to gather as much information about the hosts and ports, update the database and alert the user.
+        if skipIntelPoolingMessageUpdate != 1:
+            prebellicoLog(("-=-UDP Service Discovery-=-\nThere appears to be a UDP based conversation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening UDP service.") % ( sourceIp, udpSourcePort, destIp, udpDestPort ))
+
+        # Utilize the UdpServerTracking DB to pool intelligence about UDP connections to find a common source port on a reoccuring host.
+        prebellicoDb('writeToDb', 'insert into UdpServerTracking (sourceIp, udpSourcePort, destIp, udpDestPort) values ((?),(?),(?),(?))', [ sourceIp, udpSourcePort, destIp, udpDestPort] )
+
+        #
+        # 3 2 1 service detection algorithm
+        #
+        # Count the number of instances where the sourceIP and udpSourcePort are referenced in the database.
+        udpSourcePortCount = int(list(prebellicoDb('readFromDb', 'select count(sourceIp) from UdpServerTracking where sourceIp = (?) and udpSourcePort = (?)', [ sourceIp, udpSourcePort ] ))[0])
+
+        # Count how many times the dest IP has connected to the sourceIp and udpSourcePort using a different port than udpDestPort.
+        destIpCount = int(list(prebellicoDb('readFromDb', 'select count(sourceIp) from UdpServerTracking where sourceIp = (?) and udpSourcePort = (?) and destIp = (?) and udpDestPort != (?)', [ sourceIp, udpSourcePort, destIp, udpDestPort ] ))[0])
+
+        # Count how many times another host has connected to the sourceIP and udpSourcePort.
+        nonDestIpCount = int(list(prebellicoDb('readFromDb', 'select count(sourceIp) from UdpServerTracking where sourceIp = (?) and udpSourcePort = (?) and destIp != (?) and udpDestPort != (?)', [ sourceIp, udpSourcePort, destIp, udpDestPort ] ))[0])
+
+        #
+        # 2 2 2 service dection algorithm
+        #
+        destIpDistinctCount = int(list(prebellicoDb('readFromDb', 'select count(distinct destIp) from UdpServerTracking where sourceIp = (?) and udpSourcePort = (?)', [ sourceIp, udpSourcePort ] ))[0])
+        udpDestPortDistinctCount = int(list(prebellicoDb('readFromDb', 'select count(distinct udpDestPort) from UdpServerTracking where sourceIp = (?) and udpSourcePort = (?)', [ sourceIp, udpSourcePort ] ))[0])
+
+        # If the udpSourcePort appears to be associated with numerous other hosts on numerous other udpDestPorts, report this to the user, store it in the HostIntelligence database, and clear the UdpServerTracking database as this data will no longer be needed.
+        if (( udpSourcePortCount >= 3 and destIpCount >= 2 and nonDestIpCount >= 1 ) or (( destIpDistinctCount >= 2 and udpDestPortDistinctCount >=2 ) and ( destIpDistinctCount == udpDestPortDistinctCount ))) and skipIntelPoolingMessageUpdate != 1:
+            prebellicoLog(("-=-UDP Service Discovery-=-\nIntelligence confirms that %s is the host with open UDP port %s.") % ( sourceIp, udpSourcePort ))
+            if str(getKnownUdpPortsSourceHost[0]) != 'None':
+                newUdpPorts = checkUnique(getKnownUdpPortsSourceHost, udpSourcePort, 'int')
+                if str(newUdpPorts) != '0':
+                    prebellicoDb('writeToDb', 'update HostIntelligence set openUdpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newUdpPorts, timeStamp(), sourceIp ] )
+            elif str(getKnownUdpPortsSourceHost[0]) == 'None':
+                prebellicoDb('writeToDb', 'update HostIntelligence set openUdpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ udpSourcePort, timeStamp(), sourceIp ] )
+
+            # Determine if this is a widely used service, such as a network proxy. If so, alert the user and log the data to the NetworkIntel db.
+            numberOfUdpServiceClients = int(list(prebellicoDb('readFromDb', 'select count (distinct destIp) from UdpServerTracking where sourceIp = (?) and udpSourcePort = (?)', [ sourceIp, udpSourcePort ] ))[0])
+            if numberOfUdpServiceClients >= 5 and checkForKnownUdpEnterpriseService == 0 :
+                prebellicoLog(("-=-UDP Service Discovery-=-\nIntelligence confirms that %s:%s is a heavily used network service. While pooling data, %s clients where found to be interacting with this service.") % ( sourceIp, udpSourcePort, numberOfUdpServiceClients ))
+                enterpriseUdpService = str(sourceIp) + ":" + str(udpSourcePort)
+                prebellicoDb('writeToDb', 'insert into NetworkIntelligence ( recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface ) values ( "enterpriseUdpService", ?, ?, "passiveNetwork", ?, ? )', [ enterpriseUdpService, sourceIp, timeStamp(), dev ] )
+
+        # Limit collections for push events to 1000, allowing users to query the DB with enough historical data without filling too much of the disk.
+        numberOfUdpServiceClients = int(list(prebellicoDb('readFromDb', 'select count (distinct destIp) from UdpServerTracking where sourceIp = (?) and udpSourcePort = (?)', [ sourceIp, udpSourcePort ] ))[0])
+        if numberOfUdpServiceClients > 1000:
+            prebellicoDb('writeToDb', 'delete from UdpServerTracking where sourceIP = (?) and udpSourcePort = (?)', [ sourceIp, udpSourcePort ] )
 
     # If we see someone scanning for SNMP using community strings, alert the user to the names that are used, and the source host that it is coming from. Typically this is a an IT/Security event, so this is attributed to 'Skynet'.
     if udpDestPort == 161:
@@ -584,7 +667,6 @@ def tcpPushDiscovery(header,data):
                 if newTrustedHosts != 0:
                     prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s.") % (sourceIp, newTrustedHosts))
                     prebellicoDb('writeToDb', 'update HostIntelligence set trustRelationships = (?), lastObserved = (?) where ipAddress = (?)', [ newTrustedHosts, timeStamp(), sourceIp ] )
-
             return
 
         # If the inverse of a session using TCP ports less than 1024 exist, extract intel and alert the user.
@@ -630,7 +712,7 @@ def tcpPushDiscovery(header,data):
             knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
             if hostExists is None and sourceMatch and destMatch and knownExternalHost is None:
                 prebellicoLog(("-=-TCP Push Discovery-=-\nA new host was discovered %s, which is talking to %s:%s.") % ( sourceIp, destIp, destPort ))
-                prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, discoveryInterface, interfaceIp) values (?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, dev, devIp ] )
+                prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, destIp, dev, devIp ] )
 
             # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet.
             getKnownTcpPortsSourceHost = prebellicoDb('readFromDb', 'select openTcpPorts from HostIntelligence where ipAddress=(?)', sourceIp)
@@ -654,8 +736,8 @@ def tcpPushDiscovery(header,data):
                             skipIntelPoolingMessageUpdate = 1
 
             checkForKnownEnterpriseService = 0
-            enterpriseService = str(sourceIp) + ":" + str(sourcePort)
-            checkForKnownEnterpriseService = int(list(prebellicoDb('readFromDb', 'select count( data ) from NetworkIntelligence where recordType = (?) and data = (?)', [ "enterpriseService", enterpriseService ] ))[0])
+            enterpriseTcpService = str(sourceIp) + ":" + str(sourcePort)
+            checkForKnownEnterpriseService = int(list(prebellicoDb('readFromDb', 'select count( data ) from NetworkIntelligence where recordType = (?) and data = (?)', [ "enterpriseTcpService", enterpriseTcpService ] ))[0])
 
             # If this is a new port for the source host and the dest port and IP do not match anything withing the HostIntelligence DB, assuming this is a new server we don't know anything about, work to gather as much information about the hosts and ports, update the database and alert the user.
             if skipIntelPoolingMessageUpdate != 1:
@@ -696,8 +778,8 @@ def tcpPushDiscovery(header,data):
                 numberOfServiceClients = int(list(prebellicoDb('readFromDb', 'select count (distinct destIp) from TcpPushSessionTracking where sourceIp = (?) and sourcePort = (?)', [ sourceIp, sourcePort ] ))[0])
                 if numberOfServiceClients >= 5 and checkForKnownEnterpriseService == 0 :
                     prebellicoLog(("-=-TCP Push Discovery-=-\nIntelligence confirms that %s:%s is a heavily used network service. While pooling data, %s clients where found to be interacting with this service.") % ( sourceIp, sourcePort, numberOfServiceClients ))
-                    enterpriseService = str(sourceIp) + ":" + str(sourcePort)
-                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence ( recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface ) values ( "enterpriseService", ?, ?, "passiveNetwork", ?, ? )', [ enterpriseService, sourceIp, timeStamp(), dev ] )
+                    enterpriseTcpService = str(sourceIp) + ":" + str(sourcePort)
+                    prebellicoDb('writeToDb', 'insert into NetworkIntelligence ( recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface ) values ( "enterpriseTcpService", ?, ?, "passiveNetwork", ?, ? )', [ enterpriseTcpService, sourceIp, timeStamp(), dev ] )
 
             # Limit collections for push events to 1000, allowing users to query the DB with enough historical data without filling too much of the disk.
             numberOfServiceClients = int(list(prebellicoDb('readFromDb', 'select count (distinct destIp) from TcpPushSessionTracking where sourceIp = (?) and sourcePort = (?)', [ sourceIp, sourcePort ] ))[0])
@@ -990,7 +1072,7 @@ def sitrepQuery():
     countEgressMethod = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "egressMethod" )
     countExternalHost = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "externalHost" )
     countSkynet = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "skynet" )
-    countEnterpriseService = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "enterpriseService" )
+    countEnterpriseService = (prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "enterpriseTcpService" ) + prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "enterpriseUdpService" ))
 
     # Provide a high level summary about what we know about this environment.
     if countKnownNet[0] is not 0:
