@@ -1296,7 +1296,7 @@ def listHostsQuery():
                 if str(getHostDetails[countGetHostDetails]) != 'None':
                     hostHasDetails += 1
                 countGetHostDetails += 1
-            if hostHasDetails > 1:
+            if hostHasDetails > 2:
                 print("%s *") % knownHosts[countKnownHosts]
             else:
                 print(knownHosts[countKnownHosts])
@@ -1359,7 +1359,7 @@ def listHostDetailsQuery(ipHost):
             hostDetails.append(element)
         print("\nPrebellico knows the following about this host:\n")
         if str(hostDetails[1]) != 'None':
-            print("First discovered: %s") % (hostDetails[1])
+            print("First Discovered: %s") % (hostDetails[1])
         if str(hostDetails[2]) != 'None':
             print("Last Update: %s") % (hostDetails[2])
         if str(hostDetails[3]) != 'None':
@@ -1383,23 +1383,23 @@ def listHostDetailsQuery(ipHost):
         if str(hostDetails[12]) != 'None':
             print("Trusted Hosts: %s") % (hostDetails[12])
         if str(hostDetails[13]) != 'None':
-            print("Confirmed open TCP ports: %s") % (hostDetails[13])
+            print("Confirmed Open TCP Ports: %s") % (hostDetails[13])
         if str(hostDetails[14]) != 'None':
-            print("Confirmed open UDP ports: %s") % (hostDetails[14])
+            print("Confirmed Open UDP Ports: %s") % (hostDetails[14])
         if str(hostDetails[15]) != 'None':
-            print("Predictable IPID sequence numbers: %s") % (hostDetails[15])
+            print("Predictable IPID Sequence Numbers: %s") % (hostDetails[15])
         if str(hostDetails[16]) != 'None':
-            print("Validated SNMPv1 community string: %s") % (hostDetails[16])
+            print("Validated SNMPv1 Community String: %s") % (hostDetails[16])
         if str(hostDetails[17]) != 'None':
-            print("Validated usernames: %s") % (hostDetails[17])
+            print("Validated Usernames: %s") % (hostDetails[17])
         if str(hostDetails[18]) != 'None':
-            print("Validated passwords: %s") % (hostDetails[18])
+            print("Validated Passwords: %s") % (hostDetails[18])
         if str(hostDetails[19]) != 'None':
             print("Known Exploits: %s") % (hostDetails[19])
         if str(hostDetails[20]) != 'None':
-            print("Permitted network egress: %s") % (hostDetails[20])
+            print("Permitted Network Egress: %s") % (hostDetails[20])
         if str(hostDetails[21]) != 'None':
-            print("Discovery interface: %s") % (hostDetails[21])
+            print("Discovery Interface: %s") % (hostDetails[21])
         if str(hostDetails[22]) != 'None':
             print("Interface: %s") % (hostDetails[22])
         exit(0)
