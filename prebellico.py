@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 """
- Prebellico v1.3 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
+ Prebellico v1.4 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
  Written by Wiliam Suthers
  Shout out to the Impacket Team - you make this easy.
  Shout out to all those before me, those who invested in me, those who stand with me, and those who have yet to join our cause.
@@ -31,7 +31,35 @@ from pdb import set_trace as bp
 ####
 
 
-# Function to establish the name of the SQLite DB name, either as specified by the user, or using the default, and validating that it is a prebellico database which we can access
+# Function to process MAC addresses and see if we can map them to a VM instance or a physical instance.
+def macPlatformDetection(macAddy):
+    vendMac = macAddy[0:8].replace(":","").lower()
+    if vendMac == "005056" or vendMac == "000c29" or vendMac == "000569" or vendMac == "001c14":
+        hostType = "VMWare VM"
+        return hostType
+    elif vendMac == "0003ff" or vendMac == "00155d":
+        hostType = "Microsoft Hyper-V VM"
+        return hostType
+    elif vendMac == "001c42":
+        hostType = "Parallells Desktop VM"
+        return hostType
+    elif vendMac == "000f4b":
+        hostType = "Oracle VM"
+        return hostType
+    elif vendMac == "00163e":
+        hostType = "XenSource VM"
+        return hostType
+    elif vendMac == "080027":
+        hostType = "VirtualBox VM"
+        return hostType
+    elif vendMac == "525400":
+        hostType = "KMV/QEMU VM"
+        return hostType
+    else:
+        hostType = "Physical system, bridged VM or unknown VM OUI"
+        return hostType
+
+# Function to establish the name of the SQLite DB name, either as specified by the user, or using the default, and validating that it is a prebellico database which we can access.
 def checkPrebellicoDb():
     sqliteDbFile=args['db']
     if sqliteDbFile is None:
@@ -76,7 +104,7 @@ def checkPrebellicoDb():
             exit(1)
 
 
-# Function to open and close the DB, as well as return data as required
+# Function to open and close the DB, as well as return data as required.
 def prebellicoDb(queryType, statement, data, **keywordDbSearchParameters):
     sqliteDbFile=args['db']
     if sqliteDbFile is None:
@@ -84,30 +112,30 @@ def prebellicoDb(queryType, statement, data, **keywordDbSearchParameters):
     dbConnect=sqlite3.connect(sqliteDbFile)
     db=dbConnect.cursor()
 
-    # Test to see if the data is a single string/int or a list/tuple and execute a db function based upon determination to set the correct number of tokens
+    # Test to see if the data is a single string/int or a list/tuple and execute a db function based upon determination to set the correct number of tokens.
     if isinstance(data, basestring) or isinstance(data, (int, long)):
         db.execute(statement, [data])
     else:
         dataListLength = len(data)
         db.execute(statement, data)
 
-    # If the request is to read data from the DB, read the data from the DB
+    # If the request is to read data from the DB, read the data from the DB.
     if queryType is 'readFromDb':
         if ('readMany' in keywordDbSearchParameters):
             returnData=db.fetchall()
         else:
             returnData=db.fetchone()
 
-    # If the request is to write data to the DB, post the data
+    # If the request is to write data to the DB, post the data.
     elif queryType is 'writeToDb':
         dbConnect.commit()
 
-    # If something else goes wrong, alter the user through STDIO
+    # If something else goes wrong, alter the user through STDIO.
     else:
         print("Something went wrong while trying to interact with the %s database via the %s function! The query type was '%s' and the data was '%s'.") % ( sqliteDbFile, queryType, data )
         exit(1)
 
-    # Close the database connection and return data if a select statement was called
+    # Close the database connection and return data if a select statement was called.
     dbConnect.close()
     if queryType is 'readFromDb':
         return(returnData)
@@ -115,7 +143,7 @@ def prebellicoDb(queryType, statement, data, **keywordDbSearchParameters):
         return
 
 
-# Function to produce the time for database record keeping purposes This is a function with intent to allow the user to sepecify how to create timestamps
+# Function to produce the time for database record keeping purposes This is a function with intent to allow the user to sepecify how to create timestamps.
 def timeStamp():
 
     #Obtain the current date/time in a standard format and return it.
@@ -130,7 +158,7 @@ def prebellicoLog(data):
     logging.info(("\n%s %s") % (timeStamp(), data))
     return
 
-# Because everyone needs a cool banner - shown by default unless someone asks for it to be disabled
+# Because everyone needs a cool banner - shown by default unless someone asks for it to be disabled.
 def prebellicoBanner():
     banner = """
        ___          __       _____
@@ -323,8 +351,10 @@ def icmpDiscovery(header,data):
             # See if the source host is stored in the DB in some way. If not, make a database record and alert the user.
             host = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
             if host is None:
-                prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved,lastObserved, ipAddress, macAddy, discoveryInterface, interfaceIp) values (?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, dev, devIp ] )
                 prebellicoLog(("-=-ICMP Recon-=-\nIdentified a host through ICMP(%s): %s.") % ( icmpType, sourceIp ))
+                hostType = macPlatformDetection(sourceMac)
+                prebellicoLog(("-=-Layer 2/3 Recon-=-\n%s appears to be a %s based host.") % ( sourceIp, hostType ))
+                prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, hostType, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, hostType, dev, devIp ] )
     return
 
 
@@ -373,7 +403,9 @@ def udpDiscovery(header,data):
     hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
     if (hostExists is None and sourceMatch and destMatch) and (udpSourcePort <= 1024 or udpSourcePort == 3389 or udpSourcePort == 1985):
         prebellicoLog(("-=-Host Recon-=-\nA new host was identified with an open UDP port: %s:%s.") % (sourceIp, udpSourcePort))
-        prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openUdpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, udpSourcePort, destIp, dev, devIp ] )
+        hostType = macPlatformDetection(sourceMac)
+        prebellicoLog(("-=-Layer 2/3 Recon-=-\n%s appears to be a %s based host.") % ( sourceIp, hostType ))
+        prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, hostType, openUdpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, hostType, udpSourcePort, destIp, dev, devIp ] )
 
     # If this is a previous host and the port is less than 1024 (which is just an arbitary number - have to start somewhere), update the ports for the host.
     if (hostExists is not None and destMatch and sourceMatch) and (udpSourcePort <=1024 or udpSourcePort == 3389 or udpSourcePort == 1985):
@@ -397,8 +429,20 @@ def udpDiscovery(header,data):
         hostExists = prebellicoDb('readFromDb', 'select * from HostIntelligence where ipAddress=(?)', sourceIp)
         knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
         if hostExists is None and sourceMatch and destMatch and knownExternalHost is None:
-            prebellicoLog(("-=-UDP Service Discovery-=-\nA new host was discovered %s, which is talking to %s:%s.") % ( sourceIp, destIp, udpDestPort ))
-            prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, destIp, dev, devIp ] )
+
+            # Work to confirm if the destination IP is a broadcast IP address.
+            destIpIsBroadcast = 0
+            destIpHostOctets = destIp.split('.')
+            destIpHostOctets = [ int(x) for x in destIpHostOctets ]
+            if ((destIpHostOctets[0] == 255) or (destIpHostOctets[1] == 255 and destIpHostOctets[3] == 255) or (destIpHostOctets[2] == 255 and destIpHostOctets[3] == 255) or (destIpHostOctets[2] < 255 and destIpHostOctets[3] == 255)):
+                destIpIsBroadcast = 1
+            if destIpIsBroadcast == 0:
+                prebellicoLog(("-=-UDP Service Discovery-=-\nA new host was discovered %s, which is talking to %s:%s.") % ( sourceIp, destIp, udpDestPort ))
+            if destIpIsBroadcast == 1:
+                prebellicoLog(("-=-UDP Service Discovery-=-\nA new host was discovered %s, which is broadcasting traffic form UDP port %s to %s:%s.") % ( sourceIp, udpSourcePort, destIp, udpDestPort ))
+            hostType = macPlatformDetection(sourceMac)
+            prebellicoLog(("-=-Layer 2/3 Recon-=-\n%s appears to be a %s based host.") % ( sourceIp, hostType ))
+            prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, hostType, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, hostType, destIp, dev, devIp ] )
 
         # Using the source IP address, lookup open UDP ports to see if they match the source port captured within the packet.
         getKnownUdpPortsSourceHost = prebellicoDb('readFromDb', 'select openUdpPorts from HostIntelligence where ipAddress=(?)', sourceIp)
@@ -425,12 +469,33 @@ def udpDiscovery(header,data):
         enterpriseUdpService = str(sourceIp) + ":" + str(udpSourcePort)
         checkForKnownUdpEnterpriseService = int(list(prebellicoDb('readFromDb', 'select count( data ) from NetworkIntelligence where recordType = (?) and data = (?)', [ "enterpriseUdpService", enterpriseUdpService ] ))[0])
 
+        # Work to confirm if the destination IP is a broadcast IP address.
+        destIpIsBroadcast = 0
+        destIpHostOctets = destIp.split('.')
+        destIpHostOctets = [ int(x) for x in destIpHostOctets ]
+        if ((destIpHostOctets[0] == 255) or (destIpHostOctets[1] == 255 and destIpHostOctets[3] == 255) or (destIpHostOctets[2] == 255 and destIpHostOctets[3] == 255) or (destIpHostOctets[2] < 255 and destIpHostOctets[3] == 255)):
+            destIpIsBroadcast = 1
+
         # If this is a new port for the source host and the dest port and IP do not match anything withing the HostIntelligence DB, assuming this is a new server we don't know anything about, work to gather as much information about the hosts and ports, update the database and alert the user.
-        if skipIntelPoolingMessageUpdate != 1:
+        if skipIntelPoolingMessageUpdate != 1 and destIpIsBroadcast != 1:
             prebellicoLog(("-=-UDP Service Discovery-=-\nThere appears to be a UDP based conversation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening UDP service.") % ( sourceIp, udpSourcePort, destIp, udpDestPort ))
+        elif skipIntelPoolingMessageUpdate != 1 and destIpIsBroadcast == 1:
+            prebellicoLog(("-=-UDP Service Discovery-=-\n%s appears to be broadcasting traffic on UDP port %s to %s:%s. Consulting intelligence to determine if there is some some sort of service on this port.") %( sourceIp, udpSourcePort, destIp, udpDestPort ))
 
         # Utilize the UdpServerTracking DB to pool intelligence about UDP connections to find a common source port on a reoccuring host.
         prebellicoDb('writeToDb', 'insert into UdpServerTracking (sourceIp, udpSourcePort, destIp, udpDestPort) values ((?),(?),(?),(?))', [ sourceIp, udpSourcePort, destIp, udpDestPort] )
+
+        # Count the number of instances where the sourceIP and udpSourcePort targeting the same destionation broadcast host are referenced in the database. If this number is greater than 10, notify the user an store the data.
+        if skipIntelPoolingMessageUpdate != 1 and destIpIsBroadcast == 1:
+            udpSourcePortBroadcastCount = int(list(prebellicoDb('readFromDb', 'select count(sourceIp) from UdpServerTracking where sourceIp = (?) and udpSourcePort = (?) and destIp = (?) and udpDestPort = (?)', [ sourceIp, udpSourcePort, destIp, udpDestPort ] ))[0])
+            if udpSourcePortBroadcastCount > 10:
+                prebellicoLog(("-=-UDP Service Discovery-=-\nIntelligence confirms that %s has open UDP port %s.") % ( sourceIp, udpSourcePort ))
+                if str(getKnownUdpPortsSourceHost[0]) != 'None':
+                    newUdpPorts = checkUnique(getKnownUdpPortsSourceHost, udpSourcePort, 'int')
+                    if str(newUdpPorts) != '0':
+                        prebellicoDb('writeToDb', 'update HostIntelligence set openUdpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ newUdpPorts, timeStamp(), sourceIp ] )
+                elif str(getKnownUdpPortsSourceHost[0]) == 'None':
+                    prebellicoDb('writeToDb', 'update HostIntelligence set openUdpPorts=(?), lastObserved=(?) where ipAddress = (?)', [ udpSourcePort, timeStamp(), sourceIp ] )
 
         #
         # 3 2 1 service detection algorithm
@@ -452,7 +517,7 @@ def udpDiscovery(header,data):
 
         # If the udpSourcePort appears to be associated with numerous other hosts on numerous other udpDestPorts, report this to the user, store it in the HostIntelligence database, and clear the UdpServerTracking database as this data will no longer be needed.
         if (( udpSourcePortCount >= 3 and destIpCount >= 2 and nonDestIpCount >= 1 ) or (( destIpDistinctCount >= 2 and udpDestPortDistinctCount >=2 ) and ( destIpDistinctCount == udpDestPortDistinctCount ))) and skipIntelPoolingMessageUpdate != 1:
-            prebellicoLog(("-=-UDP Service Discovery-=-\nIntelligence confirms that %s is the host with open UDP port %s.") % ( sourceIp, udpSourcePort ))
+            prebellicoLog(("-=-UDP Service Discovery-=-\nIntelligence confirms that %s has an open UDP port: %s.") % ( sourceIp, udpSourcePort ))
             if str(getKnownUdpPortsSourceHost[0]) != 'None':
                 newUdpPorts = checkUnique(getKnownUdpPortsSourceHost, udpSourcePort, 'int')
                 if str(newUdpPorts) != '0':
@@ -641,7 +706,9 @@ def tcpPushDiscovery(header,data):
             knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
             if hostExists is None and destMatch and sourceMatch and knownExternalHost is None:
                 prebellicoLog(("-=-TCP Service Discovery-=-\nA new host was discovered with what appears to be an open TCP port - %s:%s. %s is talking to this service.") % ( sourceIp, sourcePort, destIp ))
-                prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openTcpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, sourcePort, destIp, dev, devIp ] )
+                hostType = macPlatformDetection(sourceMac)
+                prebellicoLog(("-=-Layer 2/3 Recon-=-\n%s appears to be a %s based host.") % ( sourceIp, hostType ))
+                prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, hostType, openTcpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, hostType, sourcePort, destIp, dev, devIp ] )
             return
 
             # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
@@ -677,7 +744,9 @@ def tcpPushDiscovery(header,data):
             knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', destIp)
             if hostExists is None and destMatch and sourceMatch and knownExternalHost is None:
                 prebellicoLog(("-=-TCP Service Discovery-=-\n%s appears to be talking to a newly discovered host on an open TCP port - %s:%s.") % ( sourceIp, destIp, destPort ))
-                prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, discoveryInterface, interfaceIp) values (?,?,?,?,?,?)', [ timeStamp(), timeStamp(), destIp, destMac, dev, devIp] )
+                hostType = macPlatformDetection(destMac)
+                prebellicoLog(("-=-Layer 2/3 Recon-=-\n%s appears to be a %s based host.") % ( sourceIp, hostType ))
+                prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, hostType, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), destIp, destMac, hostType, dev, devIp] )
             return
 
             # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
@@ -712,7 +781,9 @@ def tcpPushDiscovery(header,data):
             knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
             if hostExists is None and sourceMatch and destMatch and knownExternalHost is None:
                 prebellicoLog(("-=-TCP Service Discovery-=-\nA new host was discovered %s, which is talking to %s:%s.") % ( sourceIp, destIp, destPort ))
-                prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, destIp, dev, devIp ] )
+                hostType = macPlatformDetection(sourceMac)
+                prebellicoLog(("-=-Layer 2/3 Recon-=-\n%s appears to be a %s based host.") % ( sourceIp, hostType ))
+                prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, hostType, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, hostType, destIp, dev, devIp ] )
 
             # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet.
             getKnownTcpPortsSourceHost = prebellicoDb('readFromDb', 'select openTcpPorts from HostIntelligence where ipAddress=(?)', sourceIp)
@@ -895,7 +966,9 @@ def synAckDiscovery(header, data):
     knownExternalHost = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "externalHost" and data=(?)', sourceIp)
     if hostExists is None and knownExternalHost is None and sourceMatch:
         prebellicoLog(("-=-Host Recon-=-\nA new host was identified with an open TCP port: %s:%s.") % (sourceIp, sourcePort))
-        prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, openTcpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, sourcePort, destIp, dev, devIp ] )
+        hostType = macPlatformDetection(sourceMac)
+        prebellicoLog(("-=-Layer 2/3 Recon-=-\n%s appears to be a %s based host.") % ( sourceIp, hostType ))
+        prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, hostType, openTcpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, hostType, sourcePort, destIp, dev, devIp ] )
         return
 
     # Using the source IP address, lookup open TCP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
