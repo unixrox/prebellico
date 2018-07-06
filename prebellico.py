@@ -623,12 +623,12 @@ def udpDiscovery(header,data):
         hsrpNotification = 1
     if ( udpSourcePort == 1985 ):
         hsrpTempData = ethernetPacket.child().child().child().get_buffer_as_string()
-        hsrpPacketFilterRegex = recompile('[a-zA-Z0-9*]*')# Regex to yank data within snmp string data.
+        hsrpPacketFilterRegex = re.compile('[a-zA-Z0-9*].*')# Regex to yank data within snmp string data.
         hsrpTempData=hsrpPacketFilterRegexfindall(hsrpTempData)
 
         #Trying to work past a bug here for various types of HSRP packets. To manage this I have adopted a try/except-pass method to manage these issues. Additionally, this doesn't really work to pull the hashed value, but manages a crash Need to resolve this issue somehow.
         try:
-            potentialHsrpPass = resplit('[\x00-\x1f,\x7f-\xff]',hsrpTempData[0])
+            potentialHsrpPass = re.split('[\x00-\x1f,\x7f-\xff]',hsrpTempData[0])
             for justTheString in potentialHsrpPass:
                 if len(justTheString) >= 4:
                     hsrpPass = justTheString
