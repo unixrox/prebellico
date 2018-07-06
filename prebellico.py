@@ -1437,11 +1437,12 @@ parser.add_argument('-s', '--subsume', help='Include traffic from the target int
 #parser.add_argument('-a', '--semiaggressive', help='Perform semi-aggressive data collection after a specififed period of time where no new passive or semi-passive intelligence is aquired.', action='store_true')
 #parser.add_argument('-f', '--fireforeffect', help='After semipassive and semiaggressive attacks are complete, get aggressive by reading from a specified file and execute commands within that file against the provided targets.')
 #parser.add_argument('-g', '--greenlightdate', help='The specific date to execute commands within the "fireforeffect" file against the target list. This will require the defined wait period to pass, a list of targets, as well as all semipassive and semiagressive attacks to complete before these are carried out.')
+#parser.add_argument('-0', '--0day', help='Specify an 0day config file to identify undisclosed exploits.')
 parser.add_argument('-q', '--quiet', help='Remove the Prebellico banner at the start of the script.', action='store_true')
 
 report = parser.add_argument_group("Options to query intel obtained by Prebellico")
 report.add_argument('--report', help='Provide a high level SITREP on all observed network activity.', action='store_true')
-report.add_argument('--credentials', help='Provide a brief summary about credentials obtained by Prebellico.', action='store_true')
+#report.add_argument('--credentials', help='Provide a brief summary about credentials obtained by Prebellico.', action='store_true')
 report.add_argument('--listhosts', help='Provide a list of known internal hosts.', action='store_true')
 report.add_argument('--listnetworks', help='Provide a list of known networks, assuming a /24 netmask.', action='store_true')
 report.add_argument('--ip', help='Provide specific details about what Prebellico already knows about a host.')
