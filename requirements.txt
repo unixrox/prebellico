@@ -1,0 +1,3 @@
+netifaces==0.10.4
+impacket==0.9.17
+pcapy==0.11.4
