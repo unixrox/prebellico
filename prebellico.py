@@ -539,7 +539,7 @@ def udpDiscovery(header,data):
 
     # If we see someone scanning for SNMP using community strings, alert the user to the names that are used, and the source host that it is coming from. Typically this is a an IT/Security event, so this is attributed to 'Skynet'.
     if udpDestPort == 161:
-        snmpPacketFilterRegex = re.compile('[a-zA-Z0-9*]*')# Regex to yank data within snmp string data.
+        snmpPacketFilterRegex = re.compile('[a-zA-Z0-9*].*')# Regex to yank data within SNMP string data.
         snmpTempData=snmpPacketFilterRegex.findall(tempData)
         if len(snmpTempData) == 0:
             return
@@ -560,7 +560,7 @@ def udpDiscovery(header,data):
 
     # If we have a response from a host on port 161, notify the user and extract the SNMP string - note this is buggy as there is not SNMP packet verification.
     if udpSourcePort == 161:
-        snmpPacketFilterRegex = re.compile('[a-zA-Z0-9.*].*(?=:)')# Regex to yank data before colon within snmp string data.
+        snmpPacketFilterRegex = re.compile('[a-zA-Z0-9.*].*(?=:)')# Regex to yank data before colon within SNMP string data.
         snmpTempData=snmpPacketFilterRegex.findall(tempData)
         if len(snmpTempData) == 0:
             return
@@ -623,7 +623,7 @@ def udpDiscovery(header,data):
         hsrpNotification = 1
     if ( udpSourcePort == 1985 ):
         hsrpTempData = ethernetPacket.child().child().child().get_buffer_as_string()
-        hsrpPacketFilterRegex = re.compile('[a-zA-Z0-9*].*')# Regex to yank data within snmp string data.
+        hsrpPacketFilterRegex = re.compile('[a-zA-Z0-9*].*')# Regex to yank data within HSRP string data.
         hsrpTempData=hsrpPacketFilterRegex.findall(hsrpTempData)
 
         #Trying to work past a bug here for various types of HSRP packets. To manage this I have adopted a try/except-pass method to manage these issues. Additionally, this doesn't really work to pull the hashed value, but manages a crash Need to resolve this issue somehow.
