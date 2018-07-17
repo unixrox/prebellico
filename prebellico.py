@@ -2,7 +2,7 @@
 
 """
  Prebellico v1.5 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
- Written by Wiliam Suthers
+ Written by William Suthers
  Shout out to the Impacket Team - you make this easy.
  Shout out to all those before me, those who invested in me, those who stand with me, and those who have yet to join our cause.
 """
@@ -41,7 +41,7 @@ def macPlatformDetection(macAddy):
         hostType = "Microsoft Hyper-V VM"
         return hostType
     elif vendMac == "001c42":
-        hostType = "Parallells Desktop VM"
+        hostType = "Parallels Desktop VM"
         return hostType
     elif vendMac == "000f4b":
         hostType = "Oracle VM"
@@ -84,7 +84,7 @@ def checkPrebellicoDb():
         except sqlite3.OperationalError, msg:
             print msg
     else:
-        print("\nThe '%s' database file exists Working to confirm it's a prebellio database file and we have access to the database file.") % ( sqliteDbFile )
+        print("\nThe '%s' database file exists Working to confirm it's a Prebellico database file and we have access to the database file.") % ( sqliteDbFile )
         try:
             dbConnect=sqlite3.connect(sqliteDbFile)
             db=dbConnect.cursor()
@@ -143,7 +143,7 @@ def prebellicoDb(queryType, statement, data, **keywordDbSearchParameters):
         return
 
 
-# Function to produce the time for database record keeping purposes This is a function with intent to allow the user to sepecify how to create timestamps.
+# Function to produce the time for database record keeping purposes. This is a function with intent to allow the user to specify how to create timestamps.
 def timeStamp():
 
     #Obtain the current date/time in a standard format and return it.
@@ -193,10 +193,10 @@ def checkKnownNetwork(networkIp, internalMatch):
     return(newKnownNet)
 
 
-# Function to detect the protcol used within the packet to steer accordingly.
+# Function to detect the protocol used within the packet to steer accordingly.
 def inspectProto(header, data):
 
-    #If the user has set a timer to shift to a more agressive recon phase, check the timer around every fifteen minutes to see if a more agressive form of recon is required.
+    #If the user has set a timer to shift to a more aggressive recon phase, check the timer around every fifteen minutes to see if a more aggressive form of recon is required.
     global initialReconUpdateTimeCheck
     global previousTrackUpdateTime
     if trackUpdateTime is not None:
@@ -239,7 +239,7 @@ def inspectProto(header, data):
         return
     elif protocolNumber == 6:
         #print("\nThis is a TCP packet.")
-        # Pull TCP flags to determine tcp session state so that we can determine what TCP method to call for intel.
+        # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
         tcpSyn = ethernetPacket.child().child().get_SYN()
         tcpAck = ethernetPacket.child().child().get_ACK()
         tcpEce = ethernetPacket.child().child().get_ECE()
@@ -259,7 +259,7 @@ def inspectProto(header, data):
         udpDiscovery(header,data)
         return
     elif protocolNumber == 41:
-        #print("\nThis is an IPv6 encapulated packet.")
+        #print("\nThis is an IPv6 encapsulated packet.")
         return
     elif protocolNumber == 43:
         #print("\nThis is an IPv6 routing header packet.")
@@ -281,7 +281,7 @@ def inspectProto(header, data):
         #print("\nThis is not a supported IP packet.")
         return
     else:
-        #print("\nThe protocol number in this packet is %s. This is not TCP.") % ( protocolnumber )
+        #print("\nThe protocol number in this packet is %s. This is not TCP.") % ( protocolNumber )
         #print("\nEnd of the inspectProto method.\n")
         return
 
@@ -330,7 +330,7 @@ def icmpDiscovery(header,data):
     icmpHdr = ethernetPacket.child().child()
     icmpType = icmpHdr.get_type_name(icmpHdr.get_icmp_type())
 
-    # Work to determine if this is an icmp echo or echo reply. This is important, as it will allow us to determine if ICMP is permitted egress for C2 uses.
+    # Work to determine if this is an ICMP echo or echo reply. This is important, as it will allow us to determine if ICMP is permitted egress for C2 uses.
     if icmpType == "ECHO" or icmpType == "ECHOREPLY":
 
         # Work to determine if these are known internal IP addresses based upon RFC1918 or user supplied data.
@@ -407,7 +407,7 @@ def udpDiscovery(header,data):
         prebellicoLog(("-=-Layer 2/3 Recon-=-\n%s appears to be a %s based host.") % ( sourceIp, hostType ))
         prebellicoDb('writeToDb', 'insert into HostIntelligence (firstObserved, lastObserved, ipAddress, macAddy, hostType, openUdpPorts, trustRelationships, discoveryInterface, interfaceIp) values (?,?,?,?,?,?,?,?,?)', [ timeStamp(), timeStamp(), sourceIp, sourceMac, hostType, udpSourcePort, destIp, dev, devIp ] )
 
-    # If this is a previous host and the port is less than 1024 (which is just an arbitary number - have to start somewhere), update the ports for the host.
+    # If this is a previous host and the port is less than 1024 (which is just an arbitrary number - have to start somewhere), update the ports for the host.
     if (hostExists is not None and destMatch and sourceMatch) and (udpSourcePort <=1024 or udpSourcePort == 3389 or udpSourcePort == 1985):
 
         # Using the source IP address, lookup open UDP ports to see if they match the source port captured within the packet. If this is a new port for this host, update the database and alert the user.
@@ -476,16 +476,16 @@ def udpDiscovery(header,data):
         if ((destIpHostOctets[0] == 255) or (destIpHostOctets[1] == 255 and destIpHostOctets[3] == 255) or (destIpHostOctets[2] == 255 and destIpHostOctets[3] == 255) or (destIpHostOctets[2] < 255 and destIpHostOctets[3] == 255)):
             destIpIsBroadcast = 1
 
-        # If this is a new port for the source host and the dest port and IP do not match anything withing the HostIntelligence DB, assuming this is a new server we don't know anything about, work to gather as much information about the hosts and ports, update the database and alert the user.
+        # If this is a new port for the source host and the dest port and IP do not match anything within the HostIntelligence DB, assuming this is a new server we don't know anything about, work to gather as much information about the hosts and ports, update the database and alert the user.
         if skipIntelPoolingMessageUpdate != 1 and destIpIsBroadcast != 1:
             prebellicoLog(("-=-UDP Service Discovery-=-\nThere appears to be a UDP based conversation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening UDP service.") % ( sourceIp, udpSourcePort, destIp, udpDestPort ))
         elif skipIntelPoolingMessageUpdate != 1 and destIpIsBroadcast == 1:
-            prebellicoLog(("-=-UDP Service Discovery-=-\n%s appears to be broadcasting traffic on UDP port %s to %s:%s. Consulting intelligence to determine if there is some some sort of service on this port.") %( sourceIp, udpSourcePort, destIp, udpDestPort ))
+            prebellicoLog(("-=-UDP Service Discovery-=-\n%s appears to be broadcasting traffic on UDP port %s to %s:%s. Consulting intelligence to determine if there is some sort of service on this port.") %( sourceIp, udpSourcePort, destIp, udpDestPort ))
 
-        # Utilize the UdpServerTracking DB to pool intelligence about UDP connections to find a common source port on a reoccuring host.
+        # Utilize the UdpServerTracking DB to pool intelligence about UDP connections to find a common source port on a reoccurring host.
         prebellicoDb('writeToDb', 'insert into UdpServerTracking (sourceIp, udpSourcePort, destIp, udpDestPort) values ((?),(?),(?),(?))', [ sourceIp, udpSourcePort, destIp, udpDestPort] )
 
-        # Count the number of instances where the sourceIP and udpSourcePort targeting the same destionation broadcast host are referenced in the database. If this number is greater than 10, notify the user an store the data.
+        # Count the number of instances where the sourceIP and udpSourcePort targeting the same destination broadcast host are referenced in the database. If this number is greater than 10, notify the user and store the data.
         if skipIntelPoolingMessageUpdate != 1 and destIpIsBroadcast == 1:
             udpSourcePortBroadcastCount = int(list(prebellicoDb('readFromDb', 'select count(sourceIp) from UdpServerTracking where sourceIp = (?) and udpSourcePort = (?) and destIp = (?) and udpDestPort = (?)', [ sourceIp, udpSourcePort, destIp, udpDestPort ] ))[0])
             if udpSourcePortBroadcastCount > 10:
@@ -510,7 +510,7 @@ def udpDiscovery(header,data):
         nonDestIpCount = int(list(prebellicoDb('readFromDb', 'select count(sourceIp) from UdpServerTracking where sourceIp = (?) and udpSourcePort = (?) and destIp != (?) and udpDestPort != (?)', [ sourceIp, udpSourcePort, destIp, udpDestPort ] ))[0])
 
         #
-        # 2 2 2 service dection algorithm
+        # 2 2 2 service detection algorithm
         #
         destIpDistinctCount = int(list(prebellicoDb('readFromDb', 'select count(distinct destIp) from UdpServerTracking where sourceIp = (?) and udpSourcePort = (?)', [ sourceIp, udpSourcePort ] ))[0])
         udpDestPortDistinctCount = int(list(prebellicoDb('readFromDb', 'select count(distinct udpDestPort) from UdpServerTracking where sourceIp = (?) and udpSourcePort = (?)', [ sourceIp, udpSourcePort ] ))[0])
@@ -528,7 +528,7 @@ def udpDiscovery(header,data):
             # Determine if this is a widely used service, such as a network proxy. If so, alert the user and log the data to the NetworkIntel db.
             numberOfUdpServiceClients = int(list(prebellicoDb('readFromDb', 'select count (distinct destIp) from UdpServerTracking where sourceIp = (?) and udpSourcePort = (?)', [ sourceIp, udpSourcePort ] ))[0])
             if numberOfUdpServiceClients >= 5 and checkForKnownUdpEnterpriseService == 0 :
-                prebellicoLog(("-=-UDP Service Discovery-=-\nIntelligence confirms that %s:%s is a heavily used network service. While pooling data, %s clients where found to be interacting with this service.") % ( sourceIp, udpSourcePort, numberOfUdpServiceClients ))
+                prebellicoLog(("-=-UDP Service Discovery-=-\nIntelligence confirms that %s:%s is a heavily used network service. While pooling data, %s clients were found to be interacting with this service.") % ( sourceIp, udpSourcePort, numberOfUdpServiceClients ))
                 enterpriseUdpService = str(sourceIp) + ":" + str(udpSourcePort)
                 prebellicoDb('writeToDb', 'insert into NetworkIntelligence ( recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface ) values ( "enterpriseUdpService", ?, ?, "passiveNetwork", ?, ? )', [ enterpriseUdpService, sourceIp, timeStamp(), dev ] )
 
@@ -537,7 +537,7 @@ def udpDiscovery(header,data):
         if numberOfUdpServiceClients > 1000:
             prebellicoDb('writeToDb', 'delete from UdpServerTracking where sourceIP = (?) and udpSourcePort = (?)', [ sourceIp, udpSourcePort ] )
 
-    # If we see someone scanning for SNMP using community strings, alert the user to the names that are used, and the source host that it is coming from. Typically this is a an IT/Security event, so this is attributed to 'Skynet'.
+    # If we see someone scanning for SNMP using community strings, alert the user to the names that are used, and the source host that it is coming from. Typically, this is an IT/Security event, so this is attributed to 'Skynet'.
     if udpDestPort == 161:
         snmpPacketFilterRegex = re.compile('[a-zA-Z0-9*].*')# Regex to yank data within SNMP string data.
         snmpTempData=snmpPacketFilterRegex.findall(tempData)
@@ -592,7 +592,7 @@ def udpDiscovery(header,data):
                         notifyUserOfNewHostUsingSnmpString = 1
                     countHostsUsingValidatedSnmpString += 1
 
-                # If this known SNMP community string is uniqe to this host, annotate it within the NetworkIntel table within the DB and notify the user.
+                # If this known SNMP community string is unique to this host, annotate it within the NetworkIntel table within the DB and notify the user.
                 if notifyUserOfNewHostUsingSnmpString == 0:
                     prebellicoLog(("-=-SNMP Recon-=-Identified another host that uses '%s' as an SNMP community string: %s") % ( communityString, sourceIp ))
                     prebellicoDb('writeToDb', 'update HostIntelligence set validatedSnmp=(?), lastObserved=(?) where ipAddress = (?)', [ communityString, timeStamp(), sourceIp ] )
@@ -665,7 +665,7 @@ def tcpPushDiscovery(header,data):
     destIp = ipHdr.get_ip_dst()
     destPort = tcpHdr.get_th_dport()
 
-    # Pull TCP flags to determine tcp session state so that we can determine what TCP method to call for intel.
+    # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
     tcpSyn = ethernetPacket.child().child().get_SYN()
     tcpAck = ethernetPacket.child().child().get_ACK()
     tcpEce = ethernetPacket.child().child().get_ECE()
@@ -810,11 +810,11 @@ def tcpPushDiscovery(header,data):
             enterpriseTcpService = str(sourceIp) + ":" + str(sourcePort)
             checkForKnownEnterpriseService = int(list(prebellicoDb('readFromDb', 'select count( data ) from NetworkIntelligence where recordType = (?) and data = (?)', [ "enterpriseTcpService", enterpriseTcpService ] ))[0])
 
-            # If this is a new port for the source host and the dest port and IP do not match anything withing the HostIntelligence DB, assuming this is a new server we don't know anything about, work to gather as much information about the hosts and ports, update the database and alert the user.
+            # If this is a new port for the source host and the dest port and IP do not match anything within the HostIntelligence DB, assuming this is a new server we don't know anything about, work to gather as much information about the hosts and ports, update the database and alert the user.
             if skipIntelPoolingMessageUpdate != 1:
                 prebellicoLog(("-=-TCP Service Discovery-=-\nThere appears to be a TCP based conversation between %s:%s and %s:%s. Consulting intelligence to see if we can identify which host has a listening TCP service.") % ( sourceIp, sourcePort, destIp, destPort ))
 
-            # Utilize the tcpPushSessionTracking table to pool intelligence about push sessions to find a common source port on a reoccuring host.
+            # Utilize the tcpPushSessionTracking table to pool intelligence about push sessions to find a common source port on a reoccurring host.
             prebellicoDb('writeToDb', 'insert into TcpPushSessionTracking (sourceIp, sourcePort, destIp, destPort) values ((?),(?),(?),(?))', [ sourceIp, sourcePort, destIp, destPort] )
 
             #
@@ -830,7 +830,7 @@ def tcpPushDiscovery(header,data):
             nonDestIpCount = int(list(prebellicoDb('readFromDb', 'select count(sourceIp) from TcpPushSessionTracking where sourceIp = (?) and sourcePort = (?) and destIp != (?) and destPort != (?)', [ sourceIp, sourcePort, destIp, destPort ] ))[0])
 
             #
-            # 2 2 2 service dection algorithm
+            # 2 2 2 service detection algorithm
             #
             destIpDistinctCount = int(list(prebellicoDb('readFromDb', 'select count(distinct destIp) from TcpPushSessionTracking where sourceIp = (?) and sourcePort = (?)', [ sourceIp, sourcePort ] ))[0])
             destPortDistinctCount = int(list(prebellicoDb('readFromDb', 'select count(distinct destPort) from TcpPushSessionTracking where sourceIp = (?) and sourcePort = (?)', [ sourceIp, sourcePort ] ))[0])
@@ -848,7 +848,7 @@ def tcpPushDiscovery(header,data):
                 # Determine if this is a widely used service, such as a network proxy. If so, alert the user and log the data to the NetworkIntel db.
                 numberOfServiceClients = int(list(prebellicoDb('readFromDb', 'select count (distinct destIp) from TcpPushSessionTracking where sourceIp = (?) and sourcePort = (?)', [ sourceIp, sourcePort ] ))[0])
                 if numberOfServiceClients >= 5 and checkForKnownEnterpriseService == 0 :
-                    prebellicoLog(("-=-TCP Service Discovery-=-\nIntelligence confirms that %s:%s is a heavily used network service. While pooling data, %s clients where found to be interacting with this service.") % ( sourceIp, sourcePort, numberOfServiceClients ))
+                    prebellicoLog(("-=-TCP Service Discovery-=-\nIntelligence confirms that %s:%s is a heavily used network service. While pooling data, %s clients were found to be interacting with this service.") % ( sourceIp, sourcePort, numberOfServiceClients ))
                     enterpriseTcpService = str(sourceIp) + ":" + str(sourcePort)
                     prebellicoDb('writeToDb', 'insert into NetworkIntelligence ( recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface ) values ( "enterpriseTcpService", ?, ?, "passiveNetwork", ?, ? )', [ enterpriseTcpService, sourceIp, timeStamp(), dev ] )
 
@@ -899,7 +899,7 @@ def tcpDiscovery(header,data):
             ipidItem += 1
         if ( oldZombieHost == 0 and diffIpidMatch >= 10 and newDiffIpid != 0 ):
             prebellicoDb('writeToDb', 'update HostIntelligence set zombieIpid=(?), lastObserved=(?) where ipAddress = (?)', [newDiffIpid, timeStamp(), sourceIp] )
-            prebellicoLog(("-=-Zombie Recon-=-\n%s uses predictible IPID sequence numbers! Last difference:%s. Captured IPID sequence numbers:\n%s\n") % ( sourceIp,newDiffIpid,tcpIpidNumbers[sourceIp] ))
+            prebellicoLog(("-=-Zombie Recon-=-\n%s uses predictable IPID sequence numbers! Last difference:%s. Captured IPID sequence numbers:\n%s\n") % ( sourceIp,newDiffIpid,tcpIpidNumbers[sourceIp] ))
             for ipidNumber in tcpIpidNumbers[sourceIp]:
                 zombieHosts[sourceIp].add(ipidNumber)
 
@@ -912,7 +912,7 @@ def tcpDiscovery(header,data):
     return
 
 
-# Function designed to sniff out the TCP syn/ack portion of the three way handshake to enumerate listing services for a host.
+# Function designed to sniff out the TCP SYN/ACK portion of the three way handshake to enumerate listing services for a host.
 def synAckDiscovery(header, data):
 
     # Start to decode the packet and determine the protocol number. If not TCP, return as it does not apply here.
@@ -931,7 +931,7 @@ def synAckDiscovery(header, data):
     destIp = ipHdr.get_ip_dst()
     destPort = tcpHdr.get_th_dport()
 
-    # Pull TCP flags to determine tcp session state so that we can determine what TCP method to call for intel.
+    # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
     tcpSyn = ethernetPacket.child().child().get_SYN()
     tcpAck = ethernetPacket.child().child().get_ACK()
     tcpEce = ethernetPacket.child().child().get_ECE()
@@ -996,7 +996,7 @@ def synAckDiscovery(header, data):
     return
 
 
-# Function to deal with the shenanigans of how data is returned from and stored to the sqlite db. This basically takes the tuple returned from a single row/column in the DB and validates if something new has been discovered, and if so, returns an ordered string that can later be retrieved in the same manner.
+# Function to deal with the shenanigans of how data is returned from and stored to the SQLite db. This basically takes the tuple returned from a single row/column in the DB and validates if something new has been discovered, and if so, returns an ordered string that can later be retrieved in the same manner.
 def checkUnique(currentList, newValue, *sortType):
     countKnownValues = 0
     notifyUserOfNewValue = 0
@@ -1009,7 +1009,7 @@ def checkUnique(currentList, newValue, *sortType):
         # If this really is a unique value add it to the list of values for additional checks
         if notifyUserOfNewValue == 0:
 
-            # I know what you are thinking. Why!?!? The stackoverflow gods hate me for this but after many hours of blood sweat and tears I finally got this POS funtion to work with what was once an easy task with data dictionaries so there is your answer.
+            # I know what you are thinking. Why!?!? The Stack Overflow gods hate me for this but after many hours of blood sweat and tears I finally got this POS function to work with what was once an easy task with data dictionaries so there is your answer.
             knownValues = currentList
             newValues = [0]
             knownValuesLen = len(knownValues)
@@ -1085,7 +1085,7 @@ def getInterface():
 # Function to gather interface information and set the interface in sniffing mode if an interface is provided or selected during runtime.
 def sniffInterface(dev):
 
-    # Obtain the selected interface IP to use as a filter, allowing us to pwn all the things without pissing in prebellico's data pool.
+    # Obtain the selected interface IP to use as a filter, allowing us to pwn all the things without pissing in Prebellico's data pool.
     devIp = netifaces.ifaddresses(dev)[2][0]['addr']
 
     # Place the ethernet interface in promiscuous mode, capturing one packet at a time with a snaplen of 1500.
@@ -1112,9 +1112,9 @@ def checkPrebellicoWaitTimer():
     currentTime = time.time()
     currentWaitTime = round(((currentTime - currentWaitTime)/60)/60)
     if ( updateWaitTime - int(currentWaitTime)) == 1:
-        prebellicoLog("-=-Prebellico Event Montior-=-\nWARNING: It has been some time since prebellico logged an update from the network. In one hour Prebellico will shift from a 100% passive state.")
+        prebellicoLog("-=-Prebellico Event Monitor-=-\nWARNING: It has been some time since prebellico logged an update from the network. In one hour Prebellico will shift from a 100% passive state.")
     elif ( updateWaitTime - int(currentWaitTime)) == 0:
-        prebellicoLog("-=-Prebellico Event Monitor-=-\nIt has been %s hours since the last update. Shifting to a more agressive form of reconnissiance.") % ( int(currentWaitTime) )
+        prebellicoLog("-=-Prebellico Event Monitor-=-\nIt has been %s hours since the last update. Shifting to a more aggressive form of reconnaissance.") % ( int(currentWaitTime) )
         prebellicoReconPhaseShift = 1
     return(prebellicoReconPhaseShift)
 
@@ -1124,7 +1124,7 @@ def checkPrebellicoWaitTimer():
 ###
 
 def sitrepQuery():
-    print("\nQuerying the Prebellico database for an overall SITREP on network reconnissiance.\n")
+    print("\nQuerying the Prebellico database for an overall SITREP on network reconnaissance.\n")
 
     # Gather the facts from the Prebellico db.
     checkDtp = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "ciscoVtpDtpDetection")
@@ -1195,9 +1195,9 @@ def sitrepQuery():
             print("%d different methods of network egress have been identified.") % ( countEgressMethod )
     if countExternalHost[0] is not 0:
         if countExternalHost[0] is 1:
-            print("%d external host that is interacting with this network has been identifed.") % ( countExternalHost )
+            print("%d external host that is interacting with this network has been identified.") % ( countExternalHost )
         else:
-            print("%d external hosts that are interacting with this network have been identifed.") % ( countExternalHost )
+            print("%d external hosts that are interacting with this network have been identified.") % ( countExternalHost )
     if countSkynet[0] is not 0:
         if countSkynet[0] is 1:
             print("%d potential security based device has been detected.") % ( countSkynet )
@@ -1211,12 +1211,12 @@ def sitrepQuery():
     if checkDtp[0] is not 0:
         countVtpDomains = prebellicoDb('readFromDb', 'select count (distinct data) from NetworkIntelligence where recordType = (?)', "ciscoVtpDtpDomainName" )
         allVtpDomains = prebellicoDb('readFromDb', 'select data from NetworkIntelligence where recordType = (?)', "ciscoVtpDtpDomainName", readMany="yes" )
-        print("Cisco VTP/DTP is spoken here. %s VTP domains have been detetected: %s.")  % ( countVtpDomains[0], ', '.join([str(i[0]) for i in allVtpDomains]) )
+        print("Cisco VTP/DTP is spoken here. %s VTP domains have been detected: %s.")  % ( countVtpDomains[0], ', '.join([str(i[0]) for i in allVtpDomains]) )
 
     # Offer some potential ways to attack this environment from what we know about it.
     print("\nBased upon what we know about the environment so far, the following is recommended:")
     if checkDtp[0] is not 0:
-        print("\n* It might be possible to trunk this port! If so, no VLAN is safe! If you are attacking this network, it is highly recommended that you abuse DTP to trunk this port to gain access to all availible VLANs. Consider trunking the port and allowing Prebellico to gather more intel on the environment, or alternatively, attempt to trunk the port and attack other hosts on other VLANs.")
+        print("\n* It might be possible to trunk this port! If so, no VLAN is safe! If you are attacking this network, it is highly recommended that you abuse DTP to trunk this port to gain access to all available VLANs. Consider trunking the port and allowing Prebellico to gather more intel on the environment, or alternatively, attempt to trunk the port and attack other hosts on other VLANs.")
     if countValidatedSnmp[0] is not 0:
         if countValidatedSnmp[0] is 1:
             print("\n* %d validated SNMPv1 password has been identified for the following host:") % ( countValidatedSnmp )
@@ -1226,7 +1226,7 @@ def sitrepQuery():
         for validatedSnmpEntry in getValidatedSnmp:
             print str(validatedSnmpEntry[0]) + " - " + str(validatedSnmpEntry[1])
 
-        print("\nIt is highly recommended that you login to these hosts via SNMPv1 and walk the MIB tree looking for intelligence as it is highly unlikely that this will trigger an alert since you are using a validated SNMPv1 password. Consider also targeting other hosts with the same password should the password be used throughout the environment. Also consider the potiential for administrative password reuse while targeting the environment.")
+        print("\nIt is highly recommended that you login to these hosts via SNMPv1 and walk the MIB tree looking for intelligence as it is highly unlikely that this will trigger an alert since you are using a validated SNMPv1 password. Consider also targeting other hosts with the same password should the password be used throughout the environment. Also consider the potential for administrative password reuse while targeting the environment.")
     if countObservedSnmp[0] is not 0:
         if countObservedSnmp[0] is 1:
             print("\n* %d potential SNMPv1 password has been identified:") % ( countObservedSnmp )
@@ -1243,7 +1243,7 @@ def sitrepQuery():
             print("\n* Several HSRP passwords were recovered:")
         getHsrpPasswords = prebellicoDb('readFromDb', 'select data from NetworkIntelligence where recordType = (?)', "hsrp", readMany="yes" )
         print(', '.join([str(i[0]) for i in getHsrpPasswords]))
-        print("\nConsider reusing this password elsewhere for suspected system accounts and system adminsitrative passwords. If you know how to pull it off, with permission from the target organization, consider a MitM ('Man in the Middle') attack at OSI layer 3 by becoming a failover router and forcing the cluster to fail over to your node. *WARNING* This is dangerous if you do not know what you are doing or if your host cannot handle the traffic. It is better to report this than to attempt to exploit it if you do not know what you are doing.")
+        print("\nConsider reusing this password elsewhere for suspected system accounts and system administrative passwords. If you know how to pull it off, with permission from the target organization, consider a MitM ('Man in the Middle') attack at OSI layer 3 by becoming a failover router and forcing the cluster to fail over to your node. *WARNING* This is dangerous if you do not know what you are doing or if your host cannot handle the traffic. It is better to report this than to attempt to exploit it if you do not know what you are doing.")
     if countKnownHostsWithDescriptions[0] is not 0:
         if countKnownHostsWithDescriptions[0] is 1:
             print("\n* At least one host provides a description about itself:")
@@ -1264,18 +1264,18 @@ def sitrepQuery():
         print getKnownHostsWithDescription[0] + "'s hostname is '" + getKnownHostsWithDescription[1] + "' and describes itself as '" + getKnownHostsWithDescription[2] + "'."
         countNumberOfKnownHostsWithDescriptions += 1
     if countKnownHostsWithDescriptions[0] is not 0:
-        print("\n* Consider targeting one or more of these hosts if the host's description appears to be of some intrest to you. For instance, if the host description is 'password reset server' it might be worth hunting for some sort of network service to be able to interact with to discover network or user accounts. Or perhaps the host description indicates an out of support operating system, making it more subject to known remote to root exploits.\n")
+        print("\n* Consider targeting one or more of these hosts if the host's description appears to be of some interest to you. For instance, if the host description is 'password reset server' it might be worth hunting for some sort of network service to be able to interact with to discover network or user accounts. Or perhaps the host description indicates an out of support operating system, making it more subject to known remote to root exploits.\n")
     if countKnownHostsWithOpenTcpPorts[0] is not 0 or countKnownHostsWithOpenUdpPorts[0] is not 0:
         print("\n* Consider manually inspecting the identified open TCP or UDP ports on each host, including the ports identified through intelligence, working to understand their intent and how they can be leveraged to obtain your objectives. Consider also manually inspecting the traffic from these services, looking for disclosures that can be leveraged elsewhere.")
     if countKnownNet[0] is not 0:
-        print("\n* If permitted by scope, consider targeting the additional network ranges identified for targeted reconnissiance.")
+        print("\n* If permitted by scope, consider targeting the additional network ranges identified for targeted reconnaissance.")
 
 
 def listCredentialsQuery():
     print("\nQuerying the Prebellico database for a list of potential or validated credentials.")
 
 def listHostsQuery():
-    print("\nQuerying the Prebellico database for a lost of known hosts.")
+    print("\nQuerying the Prebellico database for a list of known hosts.")
     knownHosts = prebellicoDb('readFromDb', 'select ipAddress from HostIntelligence where ipAddress != (?)', "Null", readMany="yes" )
     print("\nPrebellico has discovered the following hosts:")
     knownHosts = list(knownHosts)
@@ -1346,9 +1346,9 @@ def listHostDetailsQuery(ipHost):
         print("%s is not a real network IP address. You must supply a real IP address with this option. Please try again.") % (ipHost)
         exit(1)
 
-    # Validate this is a routeable IP address that does not belong to a broadcast domain.
+    # Validate this is a routable IP address that does not belong to a broadcast domain.
     if ((ipHostOctets[0] == 255) or (ipHostOctets[0] == 224) or (ipHostOctets[0] == 240) or (ipHostOctets[1] == 255 and ipHostOctets[3] == 255) or (ipHostOctets[2] == 255 and ipHostOctets[3] == 255) or (ipHostOctets[2] < 255 and ipHostOctets[3] == 255)):
-        print("%s is a network broadcast address. You must supply a real routeable non-broadcast network IP address with this option. Please try again.") % (ipHost)
+        print("%s is a network broadcast address. You must supply a real routable non-broadcast network IP address with this option. Please try again.") % (ipHost)
         exit(1)
 
     # Validate that the host is within the database.
@@ -1428,25 +1428,25 @@ tcpNetworkEgressPermitted = 0
 hsrpNotification = 0
 
 # Parse arguments from user via argparse.
-parser = argparse.ArgumentParser()#description="Prebellico reconnissiance options")
+parser = argparse.ArgumentParser()#description="Prebellico reconnaissance options")
 parser.add_argument('-i', '--inf', help='Specify the interface you want Prebellico to listen on. By default Prebellico will hunt for interfaces and ask the user to specify an interface if one is not provided here.')
 parser.add_argument('-r', '--read', help='Specify a PCAP file to read from instead of a network interface. By default Prebellico assumes that traffic is to be read from a network interface.')
-parser.add_argument('-l', '--log', help='Specify an output file. By default Prebellico will log to "prebellicoout" if a logfile is not specified.')
-parser.add_argument('-d', '--db', help='Specify an sqlite db file you want to write to. By default this will create, if need be, and write to "prebellico.db" if not specified by the user, as long as the file is an actual Prebellico DB that the user can read from.')
+parser.add_argument('-l', '--log', help='Specify an output file. By default Prebellico will log to "prebellico.log" if a logfile is not specified.')
+parser.add_argument('-d', '--db', help='Specify an SQLite db file you want to write to. By default this will create, if need be, and write to "prebellico.db" if not specified by the user, as long as the file is an actual Prebellico DB that the user can read from.')
 parser.add_argument('-e', '--extra', help='Specify extra filtering using PCAP based syntax. By default, "ip or arp or aarp and not host 0.0.0.0 and not host <interface_IP>" is used as a filter.')
 #parser.add_argument('-t', '--targets', help='Specify targets of interest.')
-parser.add_argument('-w', '--wait', type=int, help='*Pending implmentation. Specify a period of time in hours to wait for new intelligence before shifting to a new form of intelligence gathering.')
+parser.add_argument('-w', '--wait', type=int, help='*Pending implementation. Specify a period of time in hours to wait for new intelligence before shifting to a new form of intelligence gathering.')
 parser.add_argument('-s', '--subsume', help='Include traffic from the target interface from Prebellico output. By default this traffic is excluded to ensure data generated by the interface while interacting with the environment does not taint the "fingerprint" of the target environment.', action='store_true')
-#parser.add_argument('-p', '--semipassive', help='Perform semi-passive data collection after a specified period of time where no new passive intelligence is aquired.', action='store_true')
-#parser.add_argument('-a', '--semiaggressive', help='Perform semi-aggressive data collection after a specififed period of time where no new passive or semi-passive intelligence is aquired.', action='store_true')
+#parser.add_argument('-p', '--semipassive', help='Perform semi-passive data collection after a specified period of time where no new passive intelligence is acquired.', action='store_true')
+#parser.add_argument('-a', '--semiaggressive', help='Perform semi-aggressive data collection after a specifed period of time where no new passive or semi-passive intelligence is acquired.', action='store_true')
 #parser.add_argument('-f', '--fireforeffect', help='After semipassive and semiaggressive attacks are complete, get aggressive by reading from a specified file and execute commands within that file against the provided targets.')
-#parser.add_argument('-g', '--greenlightdate', help='The specific date to execute commands within the "fireforeffect" file against the target list. This will require the defined wait period to pass, a list of targets, as well as all semipassive and semiagressive attacks to complete before these are carried out.')
+#parser.add_argument('-g', '--greenlightdate', help='The specific date to execute commands within the "fireforeffect" file against the target list. This will require the defined wait period to pass, a list of targets, as well as all semipassive and semiaggressive attacks to complete before these are carried out.')
 #parser.add_argument('-0', '--0day', help='Specify an 0day config file to identify undisclosed exploits.')
 parser.add_argument('-q', '--quiet', help='Remove the Prebellico banner at the start of the script.', action='store_true')
 
 report = parser.add_argument_group("Options to query intel obtained by Prebellico")
 report.add_argument('--report', help='Provide a high level SITREP on all observed network activity.', action='store_true')
-report.add_argument('--credentials', help='*Pending implmentation. Provide a brief summary about credentials obtained by Prebellico.', action='store_true')
+report.add_argument('--credentials', help='*Pending implementation. Provide a brief summary about credentials obtained by Prebellico.', action='store_true')
 report.add_argument('--listhosts', help='Provide a list of known internal hosts.', action='store_true')
 report.add_argument('--listnetworks', help='Provide a list of known networks, assuming a /24 netmask.', action='store_true')
 report.add_argument('--ip', help='Provide specific details about what Prebellico already knows about a host.')
@@ -1454,7 +1454,7 @@ report.add_argument('--ip', help='Provide specific details about what Prebellico
 args = vars(parser.parse_args())
 
 ###
-### Parse arguments and detetermine user's intent to either sniff for traffic or report on obtained intel. Note: db can be used for either option, so it is not checked here.
+### Parse arguments and determine user's intent to either sniff for traffic or report on obtained intel. Note: db can be used for either option, so it is not checked here.
 ###
 
 # Execution options
@@ -1492,7 +1492,7 @@ if queryIntelOptions > 0:
 
 # Work to enforce execution options.
 if (dev is not None or readPcapFile is not None or logfile is not None or includeInterface is not False or extraPcapSyntax is not None) and (queryIntelOptions > 0):
-    print("\nYou specificed both reconnissiance and query options. This is not supported For a list of supported options, please execute Prebellico with the '-h' or '--help' flags. Please try again.")
+    print("\nYou specified both reconnaissance and query options. This is not supported. For a list of supported options, please execute Prebellico with the '-h' or '--help' flags. Please try again.")
     exit(1)
 if queryIntelOptions > 1:
     print("\nYou specified more than one intel query against Prebellico. You can only specify one query at a time, along with specifying the '-d' or '-db' option to specify the Prebellico database you want to query. Please try again.")
@@ -1528,9 +1528,9 @@ else:
 console = logging.StreamHandler()
 logging.getLogger('').addHandler(console)
 
-# Determine if a device or file has been specififed. If the user requested to listen from a file instead of a network interface, ensure that both are not used If a device or file has not been specified, hunt for compatible devices and ask the user to select a compatible device. - Note, this is a bit of a hack, but it works.
+# Determine if a device or file has been specified. If the user requested to listen from a file instead of a network interface, ensure that both are not used If a device or file has not been specified, hunt for compatible devices and ask the user to select a compatible device. - Note, this is a bit of a hack, but it works.
 if readPcapFile is not None and dev is not None:
-    print("\nReading from both a PCAP file and sniffing from an interface at the same time is not permitted Consider processing the PCAP before or after sniffing from a live interface, refrencing the same Prebellico database.")
+    print("\nReading from both a PCAP file and sniffing from an interface at the same time is not permitted Consider processing the PCAP before or after sniffing from a live interface, referencing the same Prebellico database.")
     exit()
 if readPcapFile is not None and dev is None:
     # Set dummy interfaces and IP's for logging purposes.
@@ -1559,7 +1559,7 @@ except PcapError, e:
     print("\nPlease correct these issues and try again.")
     exit(1)
 
-# If the user has set a timer to shift into another form of agressive reconnissiance, generate a timer timestamp to use as a baseline.
+# If the user has set a timer to shift into another form of aggressive reconnaissance, generate a timer timestamp to use as a baseline.
 if trackUpdateTime is not None:
     if trackUpdateTime < 2:
         trackUpdateTime += 1
