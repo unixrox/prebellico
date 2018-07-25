@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 """
- Prebellico v1.5 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
+ Prebellico v1.6 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
  Written by William Suthers
  Shout out to the Impacket Team - you make this easy.
  Shout out to all those before me, those who invested in me, those who stand with me, and those who have yet to join our cause.
@@ -17,6 +17,7 @@ import time
 import sqlite3
 import argparse
 import logging
+import threading
 from datetime import datetime
 from impacket import ImpactDecoder
 from pcapy import findalldevs, open_live, PcapError
@@ -33,31 +34,32 @@ from pdb import set_trace as bp
 
 # Function to process MAC addresses and see if we can map them to a VM instance or a physical instance.
 def macPlatformDetection(macAddy):
-    vendMac = macAddy[0:8].replace(":","").lower()
-    if vendMac == "005056" or vendMac == "000c29" or vendMac == "000569" or vendMac == "001c14":
-        hostType = "VMWare VM"
-        return hostType
-    elif vendMac == "0003ff" or vendMac == "00155d":
-        hostType = "Microsoft Hyper-V VM"
-        return hostType
-    elif vendMac == "001c42":
-        hostType = "Parallels Desktop VM"
-        return hostType
-    elif vendMac == "000f4b":
-        hostType = "Oracle VM"
-        return hostType
-    elif vendMac == "00163e":
-        hostType = "XenSource VM"
-        return hostType
-    elif vendMac == "080027":
-        hostType = "VirtualBox VM"
-        return hostType
-    elif vendMac == "525400":
-        hostType = "KMV/QEMU VM"
-        return hostType
-    else:
-        hostType = "Physical system, bridged VM or unknown VM OUI"
-        return hostType
+    with lockMacPlatformDetection:
+        vendMac = macAddy[0:8].replace(":","").lower()
+        if vendMac == "005056" or vendMac == "000c29" or vendMac == "000569" or vendMac == "001c14":
+            hostType = "VMWare VM"
+            return hostType
+        elif vendMac == "0003ff" or vendMac == "00155d":
+            hostType = "Microsoft Hyper-V VM"
+            return hostType
+        elif vendMac == "001c42":
+            hostType = "Parallels Desktop VM"
+            return hostType
+        elif vendMac == "000f4b":
+            hostType = "Oracle VM"
+            return hostType
+        elif vendMac == "00163e":
+            hostType = "XenSource VM"
+            return hostType
+        elif vendMac == "080027":
+            hostType = "VirtualBox VM"
+            return hostType
+        elif vendMac == "525400":
+            hostType = "KMV/QEMU VM"
+            return hostType
+        else:
+            hostType = "Physical system, bridged VM or unknown VM OUI"
+            return hostType
 
 # Function to establish the name of the SQLite DB name, either as specified by the user, or using the default, and validating that it is a prebellico database which we can access.
 def checkPrebellicoDb():
@@ -106,41 +108,42 @@ def checkPrebellicoDb():
 
 # Function to open and close the DB, as well as return data as required.
 def prebellicoDb(queryType, statement, data, **keywordDbSearchParameters):
-    sqliteDbFile=args['db']
-    if sqliteDbFile is None:
-        sqliteDbFile='prebellico.db'
-    dbConnect=sqlite3.connect(sqliteDbFile)
-    db=dbConnect.cursor()
+    with lockPrebellicoDb:
+        sqliteDbFile=args['db']
+        if sqliteDbFile is None:
+            sqliteDbFile='prebellico.db'
+        dbConnect=sqlite3.connect(sqliteDbFile)
+        db=dbConnect.cursor()
 
-    # Test to see if the data is a single string/int or a list/tuple and execute a db function based upon determination to set the correct number of tokens.
-    if isinstance(data, basestring) or isinstance(data, (int, long)):
-        db.execute(statement, [data])
-    else:
-        dataListLength = len(data)
-        db.execute(statement, data)
-
-    # If the request is to read data from the DB, read the data from the DB.
-    if queryType is 'readFromDb':
-        if ('readMany' in keywordDbSearchParameters):
-            returnData=db.fetchall()
+        # Test to see if the data is a single string/int or a list/tuple and execute a db function based upon determination to set the correct number of tokens.
+        if isinstance(data, basestring) or isinstance(data, (int, long)):
+            db.execute(statement, [data])
         else:
-            returnData=db.fetchone()
+            dataListLength = len(data)
+            db.execute(statement, data)
 
-    # If the request is to write data to the DB, post the data.
-    elif queryType is 'writeToDb':
-        dbConnect.commit()
+        # If the request is to read data from the DB, read the data from the DB.
+        if queryType is 'readFromDb':
+            if ('readMany' in keywordDbSearchParameters):
+                returnData=db.fetchall()
+            else:
+                returnData=db.fetchone()
 
-    # If something else goes wrong, alter the user through STDIO.
-    else:
-        print("Something went wrong while trying to interact with the %s database via the %s function! The query type was '%s' and the data was '%s'.") % ( sqliteDbFile, queryType, data )
-        exit(1)
+        # If the request is to write data to the DB, post the data.
+        elif queryType is 'writeToDb':
+            dbConnect.commit()
 
-    # Close the database connection and return data if a select statement was called.
-    dbConnect.close()
-    if queryType is 'readFromDb':
-        return(returnData)
-    else:
-        return
+        # If something else goes wrong, alter the user through STDIO.
+        else:
+            print("Something went wrong while trying to interact with the %s database via the %s function! The query type was '%s' and the data was '%s'.") % ( sqliteDbFile, queryType, data )
+            exit(1)
+
+        # Close the database connection and return data if a select statement was called.
+        dbConnect.close()
+        if queryType is 'readFromDb':
+            return(returnData)
+        else:
+            return
 
 
 # Function to produce the time for database record keeping purposes. This is a function with intent to allow the user to specify how to create timestamps.
@@ -153,10 +156,10 @@ def timeStamp():
 
 # Function to write data to the screen and prebellico log.
 def prebellicoLog(data):
-
-    #Obtain the current date/time and write the message out to the log.
-    logging.info(("\n%s %s") % (timeStamp(), data))
-    return
+    with lockPrebellicoLog:
+        #Obtain the current date/time and write the message out to the log.
+        logging.info(("\n%s %s") % (timeStamp(), data))
+        return
 
 # Because everyone needs a cool banner - shown by default unless someone asks for it to be disabled.
 def prebellicoBanner():
@@ -174,29 +177,34 @@ def prebellicoBanner():
 
 # Function to validate if an IP address is associated with an RFC1918 address or a known non-RFC1918 address space that a target site uses internally.
 def checkInternalAddress(networkIp):
-    rfc1918addressregex = re.compile('^(127\.)|(192\.168\.)|(10\.)|(172\.1[6-9]\.)|(172\.2[0-9]\.)|(172\.3[0-1]\.)')#  Add this when IPv6 is ready: |(::1$)|([fF][cCdD])')
-    networkMatch = rfc1918addressregex.match(networkIp)
-    return(networkMatch)
+    with lockCheckInternalAddress:
+        rfc1918addressregex = re.compile('^(127\.)|(192\.168\.)|(10\.)|(172\.1[6-9]\.)|(172\.2[0-9]\.)|(172\.3[0-1]\.)')#  Add this when IPv6 is ready: |(::1$)|([fF][cCdD])')
+        networkMatch = rfc1918addressregex.match(networkIp)
+        return(networkMatch)
 
 
 # Function to create source and destination networks for known network tracking to assist future targeting.
 def checkKnownNetwork(networkIp, internalMatch):
-    networkIpOctets = networkIp.split('.')
-    knownNetworkCidr = networkIpOctets[0] + '.' + networkIpOctets[1] + '.' + networkIpOctets [2] + '.1/24'
-    knownSourceNetwork = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "knownNet" and data=(?)', knownNetworkCidr)
-    if knownSourceNetwork is None and internalMatch:
-        prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, dateObserved, associatedHost, methodObtained, sourceInterface) values ("knownNet", ?, ?, ?, "passiveNetwork", ?)', [knownNetworkCidr, timeStamp(), networkIp, dev] )
-        prebellicoLog(("-=-Network Recon-=-\nA new network has been identified: %s.") % (knownNetworkCidr))
-        newKnownNet = 1
-    else:
-        newKnownNet = 0
-    return(newKnownNet)
+    with lockCheckKnownNetwork:
+        networkIpOctets = networkIp.split('.')
+        knownNetworkCidr = networkIpOctets[0] + '.' + networkIpOctets[1] + '.' + networkIpOctets [2] + '.1/24'
+        knownSourceNetwork = prebellicoDb('readFromDb', 'select * from NetworkIntelligence where recordType = "knownNet" and data=(?)', knownNetworkCidr)
+        if knownSourceNetwork is None and internalMatch:
+            prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, dateObserved, associatedHost, methodObtained, sourceInterface) values ("knownNet", ?, ?, ?, "passiveNetwork", ?)', [knownNetworkCidr, timeStamp(), networkIp, dev] )
+            prebellicoLog(("-=-Network Recon-=-\nA new network has been identified: %s.") % (knownNetworkCidr))
+            newKnownNet = 1
+        else:
+            newKnownNet = 0
+        return(newKnownNet)
 
 
 # Function to detect the protocol used within the packet to steer accordingly.
 def inspectProto(header, data):
 
-    #If the user has set a timer to shift to a more aggressive recon phase, check the timer around every fifteen minutes to see if a more aggressive form of recon is required.
+    # Prepare for threadding
+    prebellicoTheads = []
+
+    # If the user has set a timer to shift to a more aggressive recon phase, check the timer around every fifteen minutes to see if a more aggressive form of recon is required.
     global initialReconUpdateTimeCheck
     global previousTrackUpdateTime
     if trackUpdateTime is not None:
@@ -232,7 +240,9 @@ def inspectProto(header, data):
     # If we were able to determine the protocol number, call the correct function to handle the protocol.
     if protocolNumber == 1:
         #print("\nThis is an ICMP packet.")
-        icmpDiscovery(header,data)
+        t = threading.Thread(target=icmpDiscovery, name='IcmpDiscoveryThread', args=(header,data))
+        prebellicoTheads.append(t)
+        t.start()
         return
     elif protocolNumber == 4:
         #print("\nThis is an IP packet.")
@@ -249,14 +259,22 @@ def inspectProto(header, data):
         tcpRst = ethernetPacket.child().child().get_RST()
         tcpUrg = ethernetPacket.child().child().get_URG()
         if ( tcpSyn == 1 and tcpAck == 1 ):
-            synAckDiscovery(header,data)
+            t = threading.Thread(target=synAckDiscovery, name='SynAckDiscoveryThread', args=(header,data))
+            prebellicoTheads.append(t)
+            t.start()
         if ( tcpPsh == 1 and tcpAck == 1 or tcpAck == 1):
-            tcpPushDiscovery(header,data)
-        tcpDiscovery(header,data)
+            t = threading.Thread(target=tcpPushDiscovery, name='TcpPushDiscoveryThread', args=(header,data))
+            prebellicoTheads.append(t)
+            t.start()
+        t = threading.Thread(target=tcpDiscovery, name='TcpDiscoveryThread', args=(header,data))
+        prebellicoTheads.append(t)
+        t.start()
         return
     elif protocolNumber == 17:
         #print("\nThis is a UDP packet.")
-        udpDiscovery(header,data)
+        t = threading.Thread(target=udpDiscovery, name='UdpDiscoveryThread', args=(header,data))
+        prebellicoTheads.append(t)
+        t.start()
         return
     elif protocolNumber == 41:
         #print("\nThis is an IPv6 encapsulated packet.")
@@ -998,55 +1016,56 @@ def synAckDiscovery(header, data):
 
 # Function to deal with the shenanigans of how data is returned from and stored to the SQLite db. This basically takes the tuple returned from a single row/column in the DB and validates if something new has been discovered, and if so, returns an ordered string that can later be retrieved in the same manner.
 def checkUnique(currentList, newValue, *sortType):
-    countKnownValues = 0
-    notifyUserOfNewValue = 0
-    while countKnownValues < len(currentList):
-        if currentList[countKnownValues] != 'None':
-            if currentList[countKnownValues] == newValue:
-                notifyUserOfNewValue = 1
-        countKnownValues += 1
+    with lockCheckUnique:
+        countKnownValues = 0
+        notifyUserOfNewValue = 0
+        while countKnownValues < len(currentList):
+            if currentList[countKnownValues] != 'None':
+                if currentList[countKnownValues] == newValue:
+                    notifyUserOfNewValue = 1
+            countKnownValues += 1
 
-        # If this really is a unique value add it to the list of values for additional checks
-        if notifyUserOfNewValue == 0:
+            # If this really is a unique value add it to the list of values for additional checks
+            if notifyUserOfNewValue == 0:
 
-            # I know what you are thinking. Why!?!? The Stack Overflow gods hate me for this but after many hours of blood sweat and tears I finally got this POS function to work with what was once an easy task with data dictionaries so there is your answer.
-            knownValues = currentList
-            newValues = [0]
-            knownValuesLen = len(knownValues)
-            newValuesCount = 0
-            while newValuesCount < knownValuesLen:
-                newValues[newValuesCount] = knownValues[newValuesCount]
-                newValuesCount += 1
-            newValues.append(newValue)
-            newValues = str(newValues)
-            newValues = newValues.strip('[')
-            newValues = newValues.strip(']')
-            newValues = newValues.replace(",", "")
-            newValues = newValues.replace("'", "")
-            newValues = newValues.replace("u", "")
-            tempValues = newValues.split(" ")
-            countTempValues = len(tempValues)
-            tempValues = list(set(tempValues))
-            if sortType == 'int':
-                tempValues.sort(key=int)
-            else:
-                tempValues.sort
-            countSortedTempValues = len(tempValues)
-            newValues = str(tempValues)
-            newValues = newValues.strip('[')
-            newValues = newValues.strip(']')
-            newValues = newValues.replace(",", "")
-            newValues = newValues.replace("'", "")
-            newValues = newValues.replace("u", "")
+                # I know what you are thinking. Why!?!? The Stack Overflow gods hate me for this but after many hours of blood sweat and tears I finally got this POS function to work with what was once an easy task with data dictionaries so there is your answer.
+                knownValues = currentList
+                newValues = [0]
+                knownValuesLen = len(knownValues)
+                newValuesCount = 0
+                while newValuesCount < knownValuesLen:
+                    newValues[newValuesCount] = knownValues[newValuesCount]
+                    newValuesCount += 1
+                newValues.append(newValue)
+                newValues = str(newValues)
+                newValues = newValues.strip('[')
+                newValues = newValues.strip(']')
+                newValues = newValues.replace(",", "")
+                newValues = newValues.replace("'", "")
+                newValues = newValues.replace("u", "")
+                tempValues = newValues.split(" ")
+                countTempValues = len(tempValues)
+                tempValues = list(set(tempValues))
+                if sortType == 'int':
+                    tempValues.sort(key=int)
+                else:
+                    tempValues.sort
+                countSortedTempValues = len(tempValues)
+                newValues = str(tempValues)
+                newValues = newValues.strip('[')
+                newValues = newValues.strip(']')
+                newValues = newValues.replace(",", "")
+                newValues = newValues.replace("'", "")
+                newValues = newValues.replace("u", "")
 
-            # If something truly has changed, store this in a temp var and pass it to the user, otherwise, return a 0.
-            if countTempValues == countSortedTempValues:
-                sortedString = newValues
+                # If something truly has changed, store this in a temp var and pass it to the user, otherwise, return a 0.
+                if countTempValues == countSortedTempValues:
+                    sortedString = newValues
+                else:
+                    sortedString = 0
             else:
                 sortedString = 0
-        else:
-            sortedString = 0
-    return(sortedString)
+        return(sortedString)
 
 
 # Function to get an interface from the user, should one not have been provided by the user.
@@ -1264,7 +1283,7 @@ def sitrepQuery():
         print getKnownHostsWithDescription[0] + "'s hostname is '" + getKnownHostsWithDescription[1] + "' and describes itself as '" + getKnownHostsWithDescription[2] + "'."
         countNumberOfKnownHostsWithDescriptions += 1
     if countKnownHostsWithDescriptions[0] is not 0:
-        print("\n* Consider targeting one or more of these hosts if the host's description appears to be of some interest to you. For instance, if the host description is 'password reset server' it might be worth hunting for some sort of network service to be able to interact with to discover network or user accounts. Or perhaps the host description indicates an out of support operating system, making it more subject to known remote to root exploits.\n")
+        print("\n* Consider targeting one or more of these hosts if the host's description appears to be of some interest to you. For instance, if the host description is 'password reset server' it might be worth hunting for some sort of network service to be able to interact with to discover network or user accounts. Or perhaps the host description indicates an out of support operating system, making it more subject to known remote to root exploits.")
     if countKnownHostsWithOpenTcpPorts[0] is not 0 or countKnownHostsWithOpenUdpPorts[0] is not 0:
         print("\n* Consider manually inspecting the identified open TCP or UDP ports on each host, including the ports identified through intelligence, working to understand their intent and how they can be leveraged to obtain your objectives. Consider also manually inspecting the traffic from these services, looking for disclosures that can be leveraged elsewhere.")
     if countKnownNet[0] is not 0:
@@ -1426,6 +1445,14 @@ tcpNetworkEgressPermitted = 0
 
 # Define a variable to control output of HSRP traffic - This is temporary until this is more built out.
 hsrpNotification = 0
+
+# Define threading locks for shared functions
+lockPrebellicoDb = threading.Lock()
+lockMacPlatformDetection = threading.Lock()
+lockPrebellicoLog = threading.Lock()
+lockCheckInternalAddress = threading.Lock()
+lockCheckKnownNetwork = threading.Lock()
+lockCheckUnique = threading.Lock()
 
 # Parse arguments from user via argparse.
 parser = argparse.ArgumentParser()#description="Prebellico reconnaissance options")
