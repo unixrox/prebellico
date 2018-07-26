@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 """
- Prebellico v1.6 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
+ Prebellico v1.7 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
  Written by William Suthers
  Shout out to the Impacket Team - you make this easy.
  Shout out to all those before me, those who invested in me, those who stand with me, and those who have yet to join our cause.
@@ -201,8 +201,8 @@ def checkKnownNetwork(networkIp, internalMatch):
 # Function to detect the protocol used within the packet to steer accordingly.
 def inspectProto(header, data):
 
-    # Prepare for threadding
-    prebellicoTheads = []
+    # Prepare for inspectproto threadding
+    prebellicoInspectProtoTheads = []
 
     # If the user has set a timer to shift to a more aggressive recon phase, check the timer around every fifteen minutes to see if a more aggressive form of recon is required.
     global initialReconUpdateTimeCheck
@@ -240,8 +240,8 @@ def inspectProto(header, data):
     # If we were able to determine the protocol number, call the correct function to handle the protocol.
     if protocolNumber == 1:
         #print("\nThis is an ICMP packet.")
-        t = threading.Thread(target=icmpDiscovery, name='IcmpDiscoveryThread', args=(header,data))
-        prebellicoTheads.append(t)
+        t = threading.Thread(name='IcmpDiscoveryThread', target=icmpDiscovery, args=(header,data))
+        prebellicoInspectProtoTheads.append(t)
         t.start()
         return
     elif protocolNumber == 4:
@@ -259,21 +259,21 @@ def inspectProto(header, data):
         tcpRst = ethernetPacket.child().child().get_RST()
         tcpUrg = ethernetPacket.child().child().get_URG()
         if ( tcpSyn == 1 and tcpAck == 1 ):
-            t = threading.Thread(target=synAckDiscovery, name='SynAckDiscoveryThread', args=(header,data))
-            prebellicoTheads.append(t)
+            t = threading.Thread(name='SynAckDiscoveryThread', target=synAckDiscovery, args=(header,data))
+            prebellicoInspectProtoTheads.append(t)
             t.start()
         if ( tcpPsh == 1 and tcpAck == 1 or tcpAck == 1):
-            t = threading.Thread(target=tcpPushDiscovery, name='TcpPushDiscoveryThread', args=(header,data))
-            prebellicoTheads.append(t)
+            t = threading.Thread(name='TcpPushDiscoveryThread', target=tcpPushDiscovery, args=(header,data))
+            prebellicoInspectProtoTheads.append(t)
             t.start()
-        t = threading.Thread(target=tcpDiscovery, name='TcpDiscoveryThread', args=(header,data))
-        prebellicoTheads.append(t)
+        t = threading.Thread(name='TcpDiscoveryThread', target=tcpDiscovery, args=(header,data))
+        prebellicoInspectProtoTheads.append(t)
         t.start()
         return
     elif protocolNumber == 17:
         #print("\nThis is a UDP packet.")
-        t = threading.Thread(target=udpDiscovery, name='UdpDiscoveryThread', args=(header,data))
-        prebellicoTheads.append(t)
+        t = threading.Thread(name='UdpDiscoveryThread', target=udpDiscovery, args=(header,data))
+        prebellicoInspectProtoTheads.append(t)
         t.start()
         return
     elif protocolNumber == 41:
@@ -1115,6 +1115,36 @@ def sniffInterface(dev):
     return(devIp, sniff)
 
 
+# Function to monitor interface for changes via a separate thread in the event the interface configuration changes.
+def sniffInterfaceMonitor(dev, devIp, includeInterface, extraPcapSyntax):
+
+    # Ensure that the thread stays in a loop, working to monitor changes to the interface IP configuration every second.
+    while True:
+        time.sleep(1)
+        oldDevIP = devIp
+
+        # Obtain the selected interface IP to validate that the interface address has not changed.
+        devIp = netifaces.ifaddresses(dev)[2][0]['addr']
+
+        # Compare the old IP address to the current IP address. If it does not match, this indicates the address has changed so notify the user and modify the sniffing filter.
+        if oldDevIP != devIp:
+            prebellicoLog(("-=-Prebellico Event Monitor-=-\nThe %s interface IP has changed from %s to %s.") % ( dev, oldDevIP, devIp ))
+
+            # Modify the filter for data based upon previous user preferences and modified IP address.
+            filter = ("ether[20:2] == 0x2004 or ip or arp or aarp and not host 0.0.0.0")
+            if includeInterface is False:
+                filter = filter + (" and not host %s") % ( devIp )
+            if extraPcapSyntax is not None:
+                filter = filter + (" %s") % ( extraPcapSyntax.lstrip() )
+            prebellicoLog(("-=-Prebellico Event Monitor-=-\nSetting new filter syntax: %s") % ( filter ))
+            try:
+                sniff.setfilter(filter)
+            except PcapError, e:
+                print("\nSomething is wrong with your PCAP filter syntax after the IP address changed on the interface: %s") % (e)
+                print("\nPlease correct these issues and try again.")
+                exit(1)
+
+
 # Function to read from a pcap file if an interface is not defined and a PCAP file is provided to read from.
 # Note that the PCAP frame size has to be 262144 or lower by design per https://github.com/the-tcpdump-group/libpcap/commit/f983e075fbef40fe12323c4dd8f85c88eaf0f789.
 def sniffFile(pcapFile):
@@ -1133,7 +1163,7 @@ def checkPrebellicoWaitTimer():
     if ( updateWaitTime - int(currentWaitTime)) == 1:
         prebellicoLog("-=-Prebellico Event Monitor-=-\nWARNING: It has been some time since prebellico logged an update from the network. In one hour Prebellico will shift from a 100% passive state.")
     elif ( updateWaitTime - int(currentWaitTime)) == 0:
-        prebellicoLog("-=-Prebellico Event Monitor-=-\nIt has been %s hours since the last update. Shifting to a more aggressive form of reconnaissance.") % ( int(currentWaitTime) )
+        prebellicoLog(("-=-Prebellico Event Monitor-=-\nIt has been %s hours since the last update. Shifting to a more aggressive form of reconnaissance.") % ( int(currentWaitTime) ))
         prebellicoReconPhaseShift = 1
     return(prebellicoReconPhaseShift)
 
@@ -1596,6 +1626,14 @@ if trackUpdateTime is not None:
     initialReconUpdateTimeCheck = 0 # Used for initial setup with the inspectProto updateReconCheckTimer function.
     updateWaitTime = trackUpdateTime
     currentWaitTime = time.time()
+
+# If we are sniffing from an interface, start an interface monitoring thread looking for interface IP address changes. This would probably work better with a semaphore but threading will do.
+if readPcapFile is None and dev is not None:
+    prebellicoMonitorInterfaceIP = []
+    infMon = threading.Thread(name='PrebellicoInterfaceMonitor', target=sniffInterfaceMonitor, args=(dev, devIp, includeInterface, extraPcapSyntax))
+    infMon.setDaemon(True)
+    prebellicoMonitorInterfaceIP.append(infMon)
+    infMon.start()
 
 # Start the impact packet decoder.
 print("\nWatching for relevant intelligence.\n")
