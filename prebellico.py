@@ -58,7 +58,7 @@ def macPlatformDetection(macAddy):
             hostType = "KMV/QEMU VM"
             return hostType
         else:
-            hostType = "Physical system, bridged VM or unknown VM OUI"
+            hostType = "physical system, bridged VM or unknown VM OUI"
             return hostType
 
 # Function to establish the name of the SQLite DB name, either as specified by the user, or using the default, and validating that it is a prebellico database which we can access.
@@ -1105,8 +1105,11 @@ def getInterface():
 def sniffInterface(dev):
 
     # Obtain the selected interface IP to use as a filter, allowing us to pwn all the things without pissing in Prebellico's data pool.
-    devIp = netifaces.ifaddresses(dev)[2][0]['addr']
-
+    try:
+        devIp = netifaces.ifaddresses(dev)[2][0]['addr']
+    except:
+        print("\nThe '%s' device does not have an IP address set. Please select another interface or configure a network address for it.\n") % (dev)
+        exit(1)
     # Place the ethernet interface in promiscuous mode, capturing one packet at a time with a snaplen of 1500.
     print("\nPlacing the '%s' interface in sniffing mode.") % ( dev )
     sniff = pcapy.open_live(dev, 1500, 1, 100)
@@ -1123,8 +1126,11 @@ def sniffInterfaceMonitor(dev, devIp, includeInterface, extraPcapSyntax):
         time.sleep(1)
         oldDevIP = devIp
 
-        # Obtain the selected interface IP to validate that the interface address has not changed.
-        devIp = netifaces.ifaddresses(dev)[2][0]['addr']
+        # Try to obtain the selected interface IP to validate that the interface address has not changed. If you fail to read an IP from the selected interface, alert the user.
+        try:
+            devIp = netifaces.ifaddresses(dev)[2][0]['addr']
+        except:
+            prebellicoLog(("-=-Prebellico Event Monitor-=-\nSomething happened to the %s interface. It no longer has a valid IP address. Prebellico will continue to operate. Please work to correct this issue.") % ( dev ))
 
         # Compare the old IP address to the current IP address. If it does not match, this indicates the address has changed so notify the user and modify the sniffing filter.
         if oldDevIP != devIp:
@@ -1322,6 +1328,7 @@ def sitrepQuery():
 
 def listCredentialsQuery():
     print("\nQuerying the Prebellico database for a list of potential or validated credentials.")
+
 
 def listHostsQuery():
     print("\nQuerying the Prebellico database for a list of known hosts.")
