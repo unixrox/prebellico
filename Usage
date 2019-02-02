@@ -65,6 +65,8 @@ Setting filter syntax: ether[20:2] == 0x2004 or ip or arp or aarp and not host 0
 
 Watching for relevant intelligence.
 
+
+
 Additional options, such as the database or log filename and location or additional filtering syntax, can be provided from the command line as needed. For details on available, simply launch Prebellico with the '-h' or '--help' flags. 
 
 Pro Tip: Consider running Prebellico in some form of screen or tmux session and in another session execute prebellico with the '--report' option using a utility such as 'watch' to obtain a concise summary of intel gathered by Prebellico:
