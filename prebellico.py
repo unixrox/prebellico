@@ -1,9 +1,9 @@
 #!/usr/bin/python
 
 """
- Prebellico v1.7 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
+ Prebellico v1.8 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
  Written by William Suthers
- Shout out to the Impacket Team - you make this easy.
+ Shout out to the Impacket and pcapy teams - you make this easy.
  Shout out to all those before me, those who invested in me, those who stand with me, and those who have yet to join our cause.
 """
 
@@ -14,6 +14,8 @@ import sys
 import os
 import re
 import time
+import base64
+import struct
 import sqlite3
 import argparse
 import logging
@@ -258,6 +260,7 @@ def inspectProto(header, data):
         tcpPsh = ethernetPacket.child().child().get_PSH()
         tcpRst = ethernetPacket.child().child().get_RST()
         tcpUrg = ethernetPacket.child().child().get_URG()
+
         if ( tcpSyn == 1 and tcpAck == 1 ):
             t = threading.Thread(name='SynAckDiscoveryThread', target=synAckDiscovery, args=(header,data))
             prebellicoInspectProtoTheads.append(t)
@@ -269,6 +272,39 @@ def inspectProto(header, data):
         t = threading.Thread(name='TcpDiscoveryThread', target=tcpDiscovery, args=(header,data))
         prebellicoInspectProtoTheads.append(t)
         t.start()
+
+        # Define regex for snarfing credentials disclosed via TCP
+        clearTextUsernameRegex = re.findall('(?<=USER )[^\r]*', data, re.IGNORECASE)
+        clearTextPasswordRegex = re.findall('(?<=PASS )[^\r]*', data, re.IGNORECASE)
+        basicAuthRegex = re.findall('(?<=Authorization: Basic )[^\n]*', data)
+        httpNtlm2Regex = re.findall('(?<=WWW-Authenticate: NTLM )[^\r]*', data)
+        httpNtlm3Regex = re.findall('(?<=Authorization: NTLM )[^\r]*', data)
+        ntlm1Regex = re.findall('NTLMSSP\x00\x01\x00\x00\x00.*[^EOF]*', data)
+        ntlm2Regex = re.findall('NTLMSSP\x00\x02\x00\x00\x00.*[^EOF]*', data)
+        ntlm3Regex = re.findall('NTLMSSP\x00\x03\x00\x00\x00.*[^EOF]*', data, re.DOTALL)
+        smbUserRegex = re.findall('((?<=Administrator )|(?<=user )|(?<=email )|(?<=username )).*(?=\\r)', data, re.IGNORECASE)
+        smbPassRegex = re.findall('((?<=cpassword )|(?<=password )|(?<=pass )|(?<=_password )|(?<=passwd )|(?<=pwd )).*(?=\\r)', data, re.IGNORECASE)
+
+        # If we get some sort of match indicating we might have some form of NTLM authentication, start a new thread and process this sucker
+        if ( httpNtlm2Regex or httpNtlm3Regex or ntlm1Regex or ntlm2Regex or ntlm3Regex ):
+            t = threading.Thread(name='NtlmAuthSnarfThread', target=ntlmAuthDiscovery, args=(header,data))
+            prebellicoInspectProtoTheads.append(t)
+            t.start()
+
+        # If we get some form of SMB traffic, try to extract authentication information out of it if at all possible.
+        if ( smbUserRegex or smbPassRegex):
+            t = threading.Thread(name='SmbCredSnarf', target=smbAuthDiscovery, args=(header,data))
+            t.start()
+
+        # If we get some form of potential clear-text or encoded authentication, start a new thread and process this information.
+        if ( clearTextPasswordRegex or clearTextUsernameRegex ):
+            t = threading.Thread(name='ClearTextCredsTread', target=processClearTextCreds, args=(header,data))
+            prebellicoInspectProtoTheads.append(t)
+            t.start()
+        if ( basicAuthRegex ):
+            t = threading.Thread(name='BasicAuthCredsThread', target=processBasicAuthCreds, args=(header, data))
+            prebellicoInspectProtoTheads.append(t)
+            t.start()
         return
     elif protocolNumber == 17:
         #print("\nThis is a UDP packet.")
@@ -1013,6 +1049,170 @@ def synAckDiscovery(header, data):
         prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s.") % (sourceIp, destIp))
     return
 
+# Function to process some potential from of NTLM authentication
+def ntlmAuthDiscovery(header,data):
+
+    # Start to decode the packet and determine the protocol number. If not TCP, return as it does not apply here.
+    ethernetPacket = decoder.decode(data)
+    protocolNumber = ethernetPacket.child().child().protocol
+    if protocolNumber != 6:
+        return
+    # Extract relevant data from the ethernet packet.
+    macHdr = ethernetPacket
+    sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
+    destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
+    ipHdr = ethernetPacket.child()
+    tcpHdr = ipHdr.child()
+    sourceIp = ipHdr.get_ip_src()
+    sourcePort = tcpHdr.get_th_sport()
+    destIp = ipHdr.get_ip_dst()
+    destPort = tcpHdr.get_th_dport()
+
+    # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
+    tcpSyn = ethernetPacket.child().child().get_SYN()
+    tcpAck = ethernetPacket.child().child().get_ACK()
+    tcpEce = ethernetPacket.child().child().get_ECE()
+    tcpCwr = ethernetPacket.child().child().get_CWR()
+    tcpFin = ethernetPacket.child().child().get_FIN()
+    tcpPsh = ethernetPacket.child().child().get_PSH()
+    tcpRst = ethernetPacket.child().child().get_RST()
+    tcpUrg = ethernetPacket.child().child().get_URG()
+
+    # Define regex designed to identify potential NTLM authentication
+    httpNtlm2Regex = re.findall('(?<=WWW-Authenticate: NTLM )[^\r]*', data)
+    httpNtlm3Regex = re.findall('(?<=Authorization: NTLM )[^\r]*', data)
+    ntlm1Regex = re.findall('NTLMSSP\x00\x01\x00\x00\x00.*[^EOF]*', data)
+    ntlm2Regex = re.findall('NTLMSSP\x00\x02\x00\x00\x00.*[^EOF]*', data)
+    ntlm3Regex = re.findall('NTLMSSP\x00\x03\x00\x00\x00.*[^EOF]*', data, re.DOTALL)
+
+    # If we think we have an HTTPNTLM or NTLM instance, report it to the user. Really need to figure out how to decode this and work to crack it offline.
+    if httpNtlm2Regex or httpNtlm3Regex:
+        prebellicoLog(("-=-Autentication Recon-=-\n%s is authenticating to %s via HTTPNTLM authentication on TCP port %s.") % (sourceIp, destIp, destPort))
+    if ntlm1Regex or ntlm2Regex or ntlm3Regex:
+        prebellicoLog(("-=-Autentication Recon-=-\n%s is authenticating to %s via NTLM authentication on TCP port %s.") % (sourceIp, destIp, destPort))
+    return
+
+
+# Function to potential clear text credentials from TCP packets
+def processClearTextCreds(header,data):
+
+    # Start to decode the packet and determine the protocol number. If not TCP, return as it does not apply here.
+    ethernetPacket = decoder.decode(data)
+    protocolNumber = ethernetPacket.child().child().protocol
+    if protocolNumber != 6:
+        return
+    # Extract relevant data from the ethernet packet.
+    macHdr = ethernetPacket
+    sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
+    destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
+    ipHdr = ethernetPacket.child()
+    tcpHdr = ipHdr.child()
+    sourceIp = ipHdr.get_ip_src()
+    sourcePort = tcpHdr.get_th_sport()
+    destIp = ipHdr.get_ip_dst()
+    destPort = tcpHdr.get_th_dport()
+
+    # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
+    tcpSyn = ethernetPacket.child().child().get_SYN()
+    tcpAck = ethernetPacket.child().child().get_ACK()
+    tcpEce = ethernetPacket.child().child().get_ECE()
+    tcpCwr = ethernetPacket.child().child().get_CWR()
+    tcpFin = ethernetPacket.child().child().get_FIN()
+    tcpPsh = ethernetPacket.child().child().get_PSH()
+    tcpRst = ethernetPacket.child().child().get_RST()
+    tcpUrg = ethernetPacket.child().child().get_URG()
+
+    # Define a basic regex designed to capture the most basic authentication prompts disclosed in a TCP session.
+    clearTextUsernameRegex = re.findall('(?<=USER )[^\r]*', data, re.IGNORECASE)
+    clearTextPasswordRegex = re.findall('(?<=PASS )[^\r]*', data, re.IGNORECASE)
+    htmlClearTextRexexFilter = re.findall('<\s*[a-z]*[^>]*>', data, re.IGNORECASE)
+
+    # If we find a matching instance, report it to the user - note: need to add this to the DB at some point.
+    if clearTextUsernameRegex and not htmlClearTextRexexFilter:
+        prebellicoLog(("-=-Autentication Recon-=-\n%s is authenticating to %s via a clear-text protocol on TCP port %s with a username of: %s") % (sourceIp, destIp, destPort, clearTextUsernameRegex[0]))
+    if clearTextPasswordRegex and not htmlClearTextRexexFilter:
+        prebellicoLog(("-=-Autentication Recon-=-\n%s is authenticating to %s via a clear-text protocol on TCP port %s with a password of: %s") % (sourceIp, destIp, destPort, clearTextPasswordRegex[0]))
+    return
+
+
+# Function to process potential basic authentication from TCP packets
+def processBasicAuthCreds(header,data):
+
+    # Start to decode the packet and determine the protocol number. If not TCP, return as it does not apply here.
+    ethernetPacket = decoder.decode(data)
+    protocolNumber = ethernetPacket.child().child().protocol
+    if protocolNumber != 6:
+        return
+    # Extract relevant data from the ethernet packet.
+    macHdr = ethernetPacket
+    sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
+    destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
+    ipHdr = ethernetPacket.child()
+    tcpHdr = ipHdr.child()
+    sourceIp = ipHdr.get_ip_src()
+    sourcePort = tcpHdr.get_th_sport()
+    destIp = ipHdr.get_ip_dst()
+    destPort = tcpHdr.get_th_dport()
+
+    # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
+    tcpSyn = ethernetPacket.child().child().get_SYN()
+    tcpAck = ethernetPacket.child().child().get_ACK()
+    tcpEce = ethernetPacket.child().child().get_ECE()
+    tcpCwr = ethernetPacket.child().child().get_CWR()
+    tcpFin = ethernetPacket.child().child().get_FIN()
+    tcpPsh = ethernetPacket.child().child().get_PSH()
+    tcpRst = ethernetPacket.child().child().get_RST()
+    tcpUrg = ethernetPacket.child().child().get_URG()
+
+    # Perform regex to see if this packet does have a basic authentication header in it
+    basicAuthRegex = re.findall('(?<=Authorization: Basic )[^\n]*', data)
+
+    if basicAuthRegex:
+        prebellicoLog(("-=-Autentication Recon-=-\n%s is authenticating to %s via basic authentication on TCP port %s: %s") % (sourceIp, destIp, destPort, base64.b64decode(basicAuthRegex[0].rstrip())))
+    return
+
+
+# Function to attempt to extract authentication information from SMB read operations.
+def smbAuthDiscovery(header,data):
+
+    # Start to decode the packet and determine the protocol number. If not TCP, return as it does not apply here.
+    ethernetPacket = decoder.decode(data)
+    protocolNumber = ethernetPacket.child().child().protocol
+    if protocolNumber != 6:
+        return
+    # Extract relevant data from the ethernet packet.
+    macHdr = ethernetPacket
+    sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
+    destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
+    ipHdr = ethernetPacket.child()
+    tcpHdr = ipHdr.child()
+    sourceIp = ipHdr.get_ip_src()
+    sourcePort = tcpHdr.get_th_sport()
+    destIp = ipHdr.get_ip_dst()
+    destPort = tcpHdr.get_th_dport()
+
+    # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
+    tcpSyn = ethernetPacket.child().child().get_SYN()
+    tcpAck = ethernetPacket.child().child().get_ACK()
+    tcpEce = ethernetPacket.child().child().get_ECE()
+    tcpCwr = ethernetPacket.child().child().get_CWR()
+    tcpFin = ethernetPacket.child().child().get_FIN()
+    tcpPsh = ethernetPacket.child().child().get_PSH()
+    tcpRst = ethernetPacket.child().child().get_RST()
+    tcpUrg = ethernetPacket.child().child().get_URG()
+
+    if sourcePort != 445:
+        return
+
+    smbUserRegex = re.findall('((?<=administrator )|(?<=user )|(?<=email )|(?<=username )).*(?=\\r)', data, re.IGNORECASE)
+    smbPassRegex = re.findall('((?<=cpassword )|(?<=password )|(?<=pass )|(?<=_password )|(?<=passwd )|(?<=pwd )).*(?=\\r)', data, re.IGNORECASE)
+
+    if smbUserRegex:
+        prebellicoLog(("-=-Autentication Recon-=-\nFound a username used by %s while talking to %s on TCP port %s: %s") % (sourceIp, destIp, destPort, smbUserRegex[0].rstrip()))
+    if smbPassRegex:
+        prebellicoLog(("-=-Autentication Recon-=-\nFound a password used by %s while talking to %s on TCP port %s: %s") % (sourceIp, destIp, destPort, smbPassRegex[0].rstrip()))
+
+    return
 
 # Function to deal with the shenanigans of how data is returned from and stored to the SQLite db. This basically takes the tuple returned from a single row/column in the DB and validates if something new has been discovered, and if so, returns an ordered string that can later be retrieved in the same manner.
 def checkUnique(currentList, newValue, *sortType):

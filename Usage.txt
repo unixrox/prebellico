@@ -1,0 +1,73 @@
+-=-Prebellico Usage-=-
+
+Prebellico execution is designed to be as simple as possible while offering advanced use cases if so desired. By default you can simply execute Prebellico with no options and it will assess the system and guide the user through selecting an interface.
+
+root@victorum:/root# python ./prebellico.py
+
+       ___          __       _____
+      / _ \_______ / /  ___ / / (_)______
+     / ___/ __/ -_) _ \/ -_) / / / __/ _ \
+    /_/  /_/  \__/___/ \__/_/_/_/\__/\___/
+    
+
+There is no patch for passive recon. ;)
+
+
+Checking for a 'prebellico.db' database file.
+
+The 'prebellico.db' database file does not exist. Creating a prebellico database now.
+
+The 'prebellico.db' prebellico database file has been created.
+
+An interface or a PCAP file was not provided.
+
+Searching the system for compatible devices.
+
+Numerous compatible interfaces identified:
+
+0 - eth0
+1 - lo
+
+Please select an interface you would like to use:0
+
+Placing the 'eth0' interface in sniffing mode.
+
+Listening on eth0: IP = 10.100.100.10, net=10.100.100.0, mask=255.255.255.0, linktype=1
+
+Setting filter syntax: ether[20:2] == 0x2004 or ip or arp or aarp and not host 0.0.0.0 and not host 10.100.100.10.
+
+Watching for relevant intelligence.
+
+
+Alternatively, if you know the interface you want to use you can specify it with the '-i' option:
+root@victorum:/root# python ./prebellico.py -i eth0
+
+       ___          __       _____
+      / _ \_______ / /  ___ / / (_)______
+     / ___/ __/ -_) _ \/ -_) / / / __/ _ \
+    /_/  /_/  \__/___/ \__/_/_/_/\__/\___/
+    
+
+There is no patch for passive recon. ;)
+
+
+Checking for a 'prebellico.db' database file.
+
+The 'prebellico.db' database file does not exist. Creating a prebellico database now.
+
+The 'prebellico.db' prebellico database file has been created.
+
+Placing the 'eth0' interface in sniffing mode.
+
+Listening on eth0: IP = 10.100.100.10, net=10.100.100.0, mask=255.255.255.0, linktype=1
+
+Setting filter syntax: ether[20:2] == 0x2004 or ip or arp or aarp and not host 0.0.0.0 and not host 10.100.100.10.
+
+Watching for relevant intelligence.
+
+
+
+Additional options, such as the database or log filename and location or additional filtering syntax, can be provided from the command line as needed. For details on available, simply launch Prebellico with the '-h' or '--help' flags. 
+
+Pro Tip: Consider running Prebellico in some form of screen or tmux session and in another session execute prebellico with the '--report' option using a utility such as 'watch' to obtain a concise summary of intel gathered by Prebellico:
+watch -n 120 python ./prebellico
