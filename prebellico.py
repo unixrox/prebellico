@@ -68,7 +68,7 @@ def checkPrebellicoDb():
     sqliteDbFile=args['db']
     if sqliteDbFile is None:
         sqliteDbFile='prebellico.db'
-    print("\nChecking for a '%s' database file.") % ( sqliteDbFile )
+    print("\nChecking for '%s' database file.") % ( sqliteDbFile )
     if not os.path.exists(sqliteDbFile):
         print("\nThe '%s' database file does not exist. Creating a prebellico database now.") % ( sqliteDbFile )
         try:
@@ -88,14 +88,14 @@ def checkPrebellicoDb():
         except sqlite3.OperationalError, msg:
             print msg
     else:
-        print("\nThe '%s' database file exists Working to confirm it's a Prebellico database file and we have access to the database file.") % ( sqliteDbFile )
+        print("'%s' exists. \nVerifying access and valid Prebellico database...") % ( sqliteDbFile )
         try:
             dbConnect=sqlite3.connect(sqliteDbFile)
             db=dbConnect.cursor()
             db.execute('select * from prebellico')
             confirmPrebellicoDb=db.fetchone()[0]
             if confirmPrebellicoDb == "prebellico_recon":
-                print("\nThe '%s' file is a prebellico database file.") % ( sqliteDbFile )
+                print("Verified '%s' file is a prebellico database file.") % ( sqliteDbFile )
                 dbConnect.close()
             else:
                 print("\nThe '%s' file is not a prebellico database file:") % ( sqliteDbFile )
@@ -171,7 +171,13 @@ def prebellicoBanner():
      / ___/ __/ -_) _ \/ -_) / / / __/ _ \\
     /_/  /_/  \__/___/ \__/_/_/_/\__/\___/
     """
+    sub = """
+    IT facts:
+    1. There's always bugs.
+    2. Things don't always act like they should.
+    """
     print(banner)
+    print(sub)
     time.sleep(1)
     print("\nThere is no patch for passive recon. ;)\n")
     time.sleep(2)
@@ -1214,7 +1220,9 @@ def smbAuthDiscovery(header,data):
 
     return
 
-# Function to deal with the shenanigans of how data is returned from and stored to the SQLite db. This basically takes the tuple returned from a single row/column in the DB and validates if something new has been discovered, and if so, returns an ordered string that can later be retrieved in the same manner.
+# Function to deal with the shenanigans of how data is returned from and stored to the SQLite db. 
+# This basically takes the tuple returned from a single row/column in the DB and validates if something new has been discovered, 
+# and if so, returns an ordered string that can later be retrieved in the same manner.
 def checkUnique(currentList, newValue, *sortType):
     with lockCheckUnique:
         countKnownValues = 0
@@ -1664,6 +1672,27 @@ def listHostDetailsQuery(ipHost):
             print("Interface: %s") % (hostDetails[22])
         exit(0)
 
+def genreport(args):
+    """
+    Report selection
+    If an intel query is called, generate and exit
+    """
+    if args['report']:
+        sitrepQuery()
+        exit(0)
+    if args['credentials']:
+        listCredentialsQuery()
+        exit(0)
+    if args['listhosts']:
+        listHostsQuery()
+        exit(0)
+    if args['listnetworks']:
+        listNetworksQuery()
+        exit(0)
+    if args['ip']:
+        listHostDetailsQuery(args['ip'])
+        exit(0)
+
 ###
 ### Prebellico variables and data dictionaries used throughout the application.
 ###
@@ -1693,8 +1722,10 @@ lockCheckUnique = threading.Lock()
 
 # Parse arguments from user via argparse.
 parser = argparse.ArgumentParser()#description="Prebellico reconnaissance options")
-parser.add_argument('-i', '--inf', help='Specify the interface you want Prebellico to listen on. By default Prebellico will hunt for interfaces and ask the user to specify an interface if one is not provided here.')
-parser.add_argument('-r', '--read', help='Specify a PCAP file to read from instead of a network interface. By default Prebellico assumes that traffic is to be read from a network interface.')
+read = parser.add_mutually_exclusive_group() #Enforce interface OR pcap
+read.add_argument('-i', '--inf', help='Specify the interface you want Prebellico to listen on. By default Prebellico will hunt for interfaces and ask the user to specify an interface if one is not provided here.')
+read.add_argument('-r', '--read', help='Specify a PCAP file to read from instead of a network interface. By default Prebellico assumes that traffic is to be read from a network interface.')
+
 parser.add_argument('-l', '--log', help='Specify an output file. By default Prebellico will log to "prebellico.log" if a logfile is not specified.')
 parser.add_argument('-d', '--db', help='Specify an SQLite db file you want to write to. By default this will create, if need be, and write to "prebellico.db" if not specified by the user, as long as the file is an actual Prebellico DB that the user can read from.')
 parser.add_argument('-e', '--extra', help='Specify extra filtering using PCAP based syntax. By default, "ip or arp or aarp and not host 0.0.0.0 and not host <interface_IP>" is used as a filter.')
@@ -1707,8 +1738,9 @@ parser.add_argument('-s', '--subsume', help='Include traffic from the target int
 #parser.add_argument('-g', '--greenlightdate', help='The specific date to execute commands within the "fireforeffect" file against the target list. This will require the defined wait period to pass, a list of targets, as well as all semipassive and semiaggressive attacks to complete before these are carried out.')
 #parser.add_argument('-0', '--0day', help='Specify an 0day config file to identify undisclosed exploits.')
 parser.add_argument('-q', '--quiet', help='Remove the Prebellico banner at the start of the script.', action='store_true')
-
-report = parser.add_argument_group("Options to query intel obtained by Prebellico")
+#Report query options
+report1 = parser.add_argument_group("Options to query intel obtained by Prebellico. You may only specify one query at a time, along with an optional db with '-d' or '-db'")
+report = report1.add_mutually_exclusive_group() #Enforce single report query.
 report.add_argument('--report', help='Provide a high level SITREP on all observed network activity.', action='store_true')
 report.add_argument('--credentials', help='*Pending implementation. Provide a brief summary about credentials obtained by Prebellico.', action='store_true')
 report.add_argument('--listhosts', help='Provide a list of known internal hosts.', action='store_true')
@@ -1720,94 +1752,43 @@ args = vars(parser.parse_args())
 ###
 ### Parse arguments and determine user's intent to either sniff for traffic or report on obtained intel. Note: db can be used for either option, so it is not checked here.
 ###
+# Check the prebellico database. This should be one of the first things we do. No db, no nothin...
+checkPrebellicoDb()
 
 # Execution options
 dev=args['inf']
 readPcapFile=args['read']
-logfile=args['log']
 trackUpdateTime = args['wait']
 includeInterface=args['subsume']
 extraPcapSyntax=args['extra']
-showBanner=args['quiet']
 
-# Reporting options.
-sitrep=args['report']
-listCredentials=args['credentials']
-listHosts=args['listhosts']
-listNetworks=args['listnetworks']
-listHostDetails=args['ip']
-
-# Work to enforce one query per call to query the database.
-queryIntelOptions = 0
-if sitrep is not False:
-    queryIntelOptions += 1
-if listCredentials is not False:
-    queryIntelOptions += 1
-if listHosts is not False:
-    queryIntelOptions += 1
-if listNetworks is not False:
-    queryIntelOptions += 1
-if listHostDetails is not None:
-    queryIntelOptions += 1
-
-# Nobody needs to see the banner while querying the database.
-if queryIntelOptions > 0:
-    showBanner = 'true'
-
-# Work to enforce execution options.
-if (dev is not None or readPcapFile is not None or logfile is not None or includeInterface is not False or extraPcapSyntax is not None) and (queryIntelOptions > 0):
-    print("\nYou specified both reconnaissance and query options. This is not supported. For a list of supported options, please execute Prebellico with the '-h' or '--help' flags. Please try again.")
-    exit(1)
-if queryIntelOptions > 1:
-    print("\nYou specified more than one intel query against Prebellico. You can only specify one query at a time, along with specifying the '-d' or '-db' option to specify the Prebellico database you want to query. Please try again.")
-    exit(1)
-
-# If an intel query is called, disable the banner, call the appropriate function and exit.
-if queryIntelOptions > 0:
-    showBanner = 'true'
-    if sitrep is not False:
-        sitrepQuery()
-    if listCredentials is not False:
-        listCredentialsQuery()
-    if listHosts is not False:
-        listHostsQuery()
-    if listNetworks is not False:
-        listNetworksQuery()
-    if listHostDetails is not None:
-        listHostDetailsQuery(listHostDetails)
-    exit(0)
+### Report query check, will exit if specified
+genreport(args)
 
 # Call the prebellico banner if the user has not disabled this function.
-if showBanner is False:
+if args['quiet'] is False:
     prebellicoBanner()
 
-# Check the prebellico database.
-checkPrebellicoDb()
-
-# Set logging parameters.
-if logfile is None:
+### Set logging parameters.
+if args['log'] is None:
     logging.basicConfig(filename='prebellico.log', format='%(message)s', level=logging.INFO)
 else:
-    logging.basicConfig(filename=logfile, format='%(message)s', level=logging.INFO)
+    logging.basicConfig(filename=args['log'], format='%(message)s', level=logging.INFO)
 console = logging.StreamHandler()
 logging.getLogger('').addHandler(console)
 
-# Determine if a device or file has been specified. If the user requested to listen from a file instead of a network interface, ensure that both are not used If a device or file has not been specified, hunt for compatible devices and ask the user to select a compatible device. - Note, this is a bit of a hack, but it works.
-if readPcapFile is not None and dev is not None:
-    print("\nReading from both a PCAP file and sniffing from an interface at the same time is not permitted Consider processing the PCAP before or after sniffing from a live interface, referencing the same Prebellico database.")
-    exit()
-if readPcapFile is not None and dev is None:
+### Figure out input source
+if readPcapFile:
     # Set dummy interfaces and IP's for logging purposes.
     dev=readPcapFile
     devIp=readPcapFile
-
     # Read from the PCAP file and process it.
     sniff = sniffFile(readPcapFile)
-if readPcapFile is None and dev is None:
+elif dev:
+    ( devIp, sniff ) = sniffInterface(dev)
+else:
     print("\nAn interface or a PCAP file was not provided.")
     dev = getInterface()
-if readPcapFile is None and dev is not None:
-    ( devIp, sniff ) = sniffInterface(dev)
 
 # Set a filter for data based upon user preferences.
 filter = ("ether[20:2] == 0x2004 or ip or arp or aarp and not host 0.0.0.0")
@@ -1835,7 +1816,7 @@ if trackUpdateTime is not None:
     currentWaitTime = time.time()
 
 # If we are sniffing from an interface, start an interface monitoring thread looking for interface IP address changes. This would probably work better with a semaphore but threading will do.
-if readPcapFile is None and dev is not None:
+if dev:
     prebellicoMonitorInterfaceIP = []
     infMon = threading.Thread(name='PrebellicoInterfaceMonitor', target=sniffInterfaceMonitor, args=(dev, devIp, includeInterface, extraPcapSyntax))
     infMon.setDaemon(True)
