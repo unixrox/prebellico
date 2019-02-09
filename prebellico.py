@@ -88,14 +88,14 @@ def checkPrebellicoDb():
         except sqlite3.OperationalError, msg:
             print msg
     else:
-        print("'%s' exists. \nVerifying access and valid Prebellico database...") % ( sqliteDbFile )
+        print("Verifying database access and valid Prebellico schema.")
         try:
             dbConnect=sqlite3.connect(sqliteDbFile)
             db=dbConnect.cursor()
             db.execute('select * from prebellico')
             confirmPrebellicoDb=db.fetchone()[0]
             if confirmPrebellicoDb == "prebellico_recon":
-                print("Verified '%s' file is a prebellico database file.") % ( sqliteDbFile )
+                print("Verified '%s' is a prebellico database file.") % ( sqliteDbFile )
                 dbConnect.close()
             else:
                 print("\nThe '%s' file is not a prebellico database file:") % ( sqliteDbFile )
@@ -171,13 +171,7 @@ def prebellicoBanner():
      / ___/ __/ -_) _ \/ -_) / / / __/ _ \\
     /_/  /_/  \__/___/ \__/_/_/_/\__/\___/
     """
-    sub = """
-    IT facts:
-    1. There's always bugs.
-    2. Things don't always act like they should.
-    """
     print(banner)
-    print(sub)
     time.sleep(1)
     print("\nThere is no patch for passive recon. ;)\n")
     time.sleep(2)
@@ -1672,7 +1666,7 @@ def listHostDetailsQuery(ipHost):
             print("Interface: %s") % (hostDetails[22])
         exit(0)
 
-def genreport(args):
+def generateReport(args):
     """
     Report selection
     If an intel query is called, generate and exit
@@ -1763,7 +1757,7 @@ includeInterface=args['subsume']
 extraPcapSyntax=args['extra']
 
 ### Report query check, will exit if specified
-genreport(args)
+generateReport(args)
 
 # Call the prebellico banner if the user has not disabled this function.
 if args['quiet'] is False:
