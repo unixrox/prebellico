@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 """
- Prebellico v1.8 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
+ Prebellico v1.8.1 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
  Written by William Suthers
  Shout out to the Impacket and pcapy teams - you make this easy.
  Shout out to all those before me, those who invested in me, those who stand with me, and those who have yet to join our cause.
@@ -222,6 +222,9 @@ def inspectProto(header, data):
 
     # Start to decode the packet, determine the protocol number and call the appropriate method.
     ethernetPacket = decoder.decode(data)
+    macHdr = ethernetPacket
+    sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
+    destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
 
     # If we were able to identify a protocol, extract the protocol number, otherwise, further inspect the ethernet packet.
     if hasattr(ethernetPacket.child().child(), 'protocol'):
@@ -232,7 +235,7 @@ def inspectProto(header, data):
         ethernetProtoId = ethernetPacket.child().child().get_protoID()
         ethernetOUI = ethernetPacket.child().child().get_OUI()
         if ethernetProtoId == 8196 and ethernetOUI == 12:
-            ciscoVtpDtpDetection(header, data)
+            ciscoVtpDtpDetection(header,data,ethernetPacket,ethernetProtoId,ethernetOUI)
             return
 
     # If we have no idea what this is, simply return.
@@ -242,7 +245,12 @@ def inspectProto(header, data):
     # If we were able to determine the protocol number, call the correct function to handle the protocol.
     if protocolNumber == 1:
         #print("\nThis is an ICMP packet.")
-        t = threading.Thread(name='IcmpDiscoveryThread', target=icmpDiscovery, args=(header,data))
+        ipHdr = ethernetPacket.child()
+        sourceIp = ipHdr.get_ip_src()
+        destIp = ipHdr.get_ip_dst()
+        icmpHdr = ethernetPacket.child().child()
+        icmpType = icmpHdr.get_type_name(icmpHdr.get_icmp_type())
+        t = threading.Thread(name='IcmpDiscoveryThread', target=icmpDiscovery, args=(ethernetPacket,protocolNumber,macHdr,sourceMac,destMac,ipHdr,sourceIp,destIp,icmpHdr,icmpType,header,data))
         prebellicoInspectProtoTheads.append(t)
         t.start()
         return
@@ -251,6 +259,15 @@ def inspectProto(header, data):
         return
     elif protocolNumber == 6:
         #print("\nThis is a TCP packet.")
+
+        # Extract relevant data from the ethernet packet.
+        ipHdr = ethernetPacket.child()
+        tcpHdr = ipHdr.child()
+        sourceIp = ipHdr.get_ip_src()
+        sourcePort = tcpHdr.get_th_sport()
+        destIp = ipHdr.get_ip_dst()
+        destPort = tcpHdr.get_th_dport()
+
         # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
         tcpSyn = ethernetPacket.child().child().get_SYN()
         tcpAck = ethernetPacket.child().child().get_ACK()
@@ -262,14 +279,15 @@ def inspectProto(header, data):
         tcpUrg = ethernetPacket.child().child().get_URG()
 
         if ( tcpSyn == 1 and tcpAck == 1 ):
-            t = threading.Thread(name='SynAckDiscoveryThread', target=synAckDiscovery, args=(header,data))
+            t = threading.Thread(name='SynAckDiscoveryThread', target=synAckDiscovery, args=(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg))
             prebellicoInspectProtoTheads.append(t)
             t.start()
+
         if ( tcpPsh == 1 and tcpAck == 1 or tcpAck == 1):
-            t = threading.Thread(name='TcpPushDiscoveryThread', target=tcpPushDiscovery, args=(header,data))
+            t = threading.Thread(name='TcpPushDiscoveryThread', target=tcpPushDiscovery, args=(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg))
             prebellicoInspectProtoTheads.append(t)
             t.start()
-        t = threading.Thread(name='TcpDiscoveryThread', target=tcpDiscovery, args=(header,data))
+        t = threading.Thread(name='TcpDiscoveryThread', target=tcpDiscovery, args=(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg))
         prebellicoInspectProtoTheads.append(t)
         t.start()
 
@@ -287,28 +305,35 @@ def inspectProto(header, data):
 
         # If we get some sort of match indicating we might have some form of NTLM authentication, start a new thread and process this sucker
         if ( httpNtlm2Regex or httpNtlm3Regex or ntlm1Regex or ntlm2Regex or ntlm3Regex ):
-            t = threading.Thread(name='NtlmAuthSnarfThread', target=ntlmAuthDiscovery, args=(header,data))
+            t = threading.Thread(name='NtlmAuthSnarfThread', target=ntlmAuthDiscovery, args=(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg))
             prebellicoInspectProtoTheads.append(t)
             t.start()
 
         # If we get some form of SMB traffic, try to extract authentication information out of it if at all possible.
         if ( smbUserRegex or smbPassRegex):
-            t = threading.Thread(name='SmbCredSnarf', target=smbAuthDiscovery, args=(header,data))
+            t = threading.Thread(name='SmbCredSnarf', target=smbAuthDiscovery, args=(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg))
             t.start()
 
         # If we get some form of potential clear-text or encoded authentication, start a new thread and process this information.
         if ( clearTextPasswordRegex or clearTextUsernameRegex ):
-            t = threading.Thread(name='ClearTextCredsTread', target=processClearTextCreds, args=(header,data))
+            t = threading.Thread(name='ClearTextCredsTread', target=processClearTextCreds, args=(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg))
             prebellicoInspectProtoTheads.append(t)
             t.start()
         if ( basicAuthRegex ):
-            t = threading.Thread(name='BasicAuthCredsThread', target=processBasicAuthCreds, args=(header, data))
+            t = threading.Thread(name='BasicAuthCredsThread', target=processBasicAuthCreds, args=(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg))
             prebellicoInspectProtoTheads.append(t)
             t.start()
         return
     elif protocolNumber == 17:
         #print("\nThis is a UDP packet.")
-        t = threading.Thread(name='UdpDiscoveryThread', target=udpDiscovery, args=(header,data))
+        ipHdr = ethernetPacket.child()
+        sourceIp = ipHdr.get_ip_src()
+        destIp = ipHdr.get_ip_dst()
+        udpHdr = ipHdr.child()
+        udpSourcePort = udpHdr.get_uh_sport()
+        udpDestPort = udpHdr.get_uh_dport()
+        tempData = udpHdr.get_data_as_string()
+        t = threading.Thread(name='UdpDiscoveryThread', target=udpDiscovery, args=(ethernetPacket,protocolNumber,macHdr,sourceMac,destMac,ipHdr,sourceIp,destIp,udpSourcePort,udpDestPort,tempData,header,data))
         prebellicoInspectProtoTheads.append(t)
         t.start()
         return
@@ -341,13 +366,9 @@ def inspectProto(header, data):
 
 
 # Function designed to alert the user to potential VTP/DTP packets, indicating potential DTP support.
-def ciscoVtpDtpDetection(header, data):
+def ciscoVtpDtpDetection(header,data,ethernetPacket,ethernetProtoId,ethernetOUI):
 
     # Work to extract data and validate that we are supposed to be here.
-    ethernetPacket = decoder.decode(data)
-    ethernetProtoId = ethernetPacket.child().child().get_protoID()
-    ethernetOUI = ethernetPacket.child().child().get_OUI()
-
     if ethernetProtoId != 8196 and ethernetOUI != 12:
         return
 
@@ -369,20 +390,10 @@ def ciscoVtpDtpDetection(header, data):
 
 
 # Function designed to sniff out intel tied to ICMP traffic.
-def icmpDiscovery(header,data):
+def icmpDiscovery(ethernetPacket,protocolNumber,macHdr,sourceMac,destMac,ipHdr,sourceIp,destIp,icmpHdr,icmpType,header,data):
 
-    ethernetPacket = decoder.decode(data)
-    protocolNumber = ethernetPacket.child().child().protocol
     if protocolNumber != 1:
         return
-    ipHdr = ethernetPacket.child()
-    macHdr = ethernetPacket
-    sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
-    destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
-    sourceIp = ipHdr.get_ip_src()
-    destIp = ipHdr.get_ip_dst()
-    icmpHdr = ethernetPacket.child().child()
-    icmpType = icmpHdr.get_type_name(icmpHdr.get_icmp_type())
 
     # Work to determine if this is an ICMP echo or echo reply. This is important, as it will allow us to determine if ICMP is permitted egress for C2 uses.
     if icmpType == "ECHO" or icmpType == "ECHOREPLY":
@@ -413,25 +424,11 @@ def icmpDiscovery(header,data):
 
 
 # Function designed to sniff out intel tied to generic UDP intelligence such as SMB and SNMP traffic.
-def udpDiscovery(header,data):
+def udpDiscovery(ethernetPacket,protocolNumber,macHdr,sourceMac,destMac,ipHdr,sourceIp,destIp,udpSourcePort,udpDestPort,tempData,header,data):
 
-    # Start to decode the packet and determine the protocol number. If not UDP, return as it does not apply here.
-    ethernetPacket = decoder.decode(data)
-    protocolNumber = ethernetPacket.child().child().protocol
+    # If not UDP, return as it does not apply here.
     if protocolNumber != 17:
         return
-
-    # Extract relevant data from the ethernet packet.
-    macHdr = ethernetPacket
-    sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
-    destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
-    ipHdr = ethernetPacket.child()
-    udpHdr = ipHdr.child()
-    sourceIp = ipHdr.get_ip_src()
-    destIp = ipHdr.get_ip_dst()
-    udpSourcePort = udpHdr.get_uh_sport()
-    udpDestPort = udpHdr.get_uh_dport()
-    tempData = udpHdr.get_data_as_string()
 
     # Work to determine if these are known internal IP addresses based upon RFC1918 or user supplied data.
     (sourceMatch, destMatch) = ( checkInternalAddress(sourceIp), checkInternalAddress(destIp) )
@@ -608,7 +605,7 @@ def udpDiscovery(header,data):
                         prebellicoLog(("-=-Skynet Recon-=-\nA new security system has been identified: %s.") % ( sourceIp ))
                         prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("skynet", ?, ?, "passiveNetwork", ?, ?)', [ sourceIp, sourceIp, timeStamp(), dev ] )
                     if knownSnmpString is None:
-                        prebellicoLog(("-=-Skynet Recon-=-\n%s is scanning for systems with an SNMPv1 community string: %s.") % ( sourceIp, communityString ))
+                        prebellicoLog(("-=-Skynet Recon-=-\n%s is scanning for systems with an SNMPv1 community string: %s") % ( sourceIp, communityString ))
                         prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("observedSnmp",?,?,"passiveNetwork",?,?)', [ communityString, sourceIp, timeStamp(), dev ] )
 
 
@@ -629,7 +626,7 @@ def udpDiscovery(header,data):
 
         # If not, notify the user that this is a new string and store the data in the NetworkIntel table and HostIntel table.
         if knownValidatedSnmpString is None:
-            prebellicoLog(("-=-SNMP Recon-=-We have a new SNMPv1 community string from %s: %s.") % ( sourceIp, communityString ))
+            prebellicoLog(("-=-SNMP Recon-=-We have a new SNMPv1 community string from %s: %s") % ( sourceIp, communityString ))
             prebellicoDb('writeToDb', 'insert into NetworkIntelligence (recordType, data, associatedHost, methodObtained, dateObserved, sourceInterface) values ("validatedSnmp",?,?,"passiveNetwork",?,?)', [ communityString, sourceIp, timeStamp(), dev ] )
             prebellicoDb('writeToDb', 'update HostIntelligence set validatedSnmp=(?), lastObserved=(?) where ipAddress = (?)', [communityString, timeStamp(), sourceIp] )
 
@@ -701,33 +698,11 @@ def udpDiscovery(header,data):
 
 
 # Function designed to sniff out intel tied to captured TCP PSH requests.
-def tcpPushDiscovery(header,data):
+def tcpPushDiscovery(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg):
 
-    # Start to decode the packet and determine the protocol number. If not TCP, return as it does not apply here.
-    ethernetPacket = decoder.decode(data)
-    protocolNumber = ethernetPacket.child().child().protocol
+    # If not TCP, return as it does not apply here.
     if protocolNumber != 6:
         return
-    # Extract relevant data from the ethernet packet.
-    macHdr = ethernetPacket
-    sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
-    destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
-    ipHdr = ethernetPacket.child()
-    tcpHdr = ipHdr.child()
-    sourceIp = ipHdr.get_ip_src()
-    sourcePort = tcpHdr.get_th_sport()
-    destIp = ipHdr.get_ip_dst()
-    destPort = tcpHdr.get_th_dport()
-
-    # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
-    tcpSyn = ethernetPacket.child().child().get_SYN()
-    tcpAck = ethernetPacket.child().child().get_ACK()
-    tcpEce = ethernetPacket.child().child().get_ECE()
-    tcpCwr = ethernetPacket.child().child().get_CWR()
-    tcpFin = ethernetPacket.child().child().get_FIN()
-    tcpPsh = ethernetPacket.child().child().get_PSH()
-    tcpRst = ethernetPacket.child().child().get_RST()
-    tcpUrg = ethernetPacket.child().child().get_URG()
 
     # If a TCP push packet is discovered from a previously unknown session, work to process it.
     if ( tcpPsh == 1 and tcpAck == 1 ):
@@ -914,19 +889,13 @@ def tcpPushDiscovery(header,data):
 
 
 # Function designed to sniff out intel tied to generic TCP intelligence such as predictable IPID numbers.
-def tcpDiscovery(header,data):
+def tcpDiscovery(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg):
 
-    # Start to decode the packet and determine the protocol number. If not TCP, return as it does not apply here.
-    ethernetPacket = decoder.decode(data)
-    protocolNumber = ethernetPacket.child().child().protocol
+    # If not TCP, return as it does not apply here.
     if protocolNumber != 6:
         return
     # Extract relevant data from the ethernet packet
-    macHdr = ethernetPacket
-    ipHdr = ethernetPacket.child()
-    tcpHdr = ipHdr.child()
     sourceIpSequenceNumber = tcpHdr.get_th_seq()
-    sourceIp = ipHdr.get_ip_src()
 
     # Work to determine if we have an IPID sequence number from this host. If so, simply return for more carnage.
     checkKnownIpidNumberHost = prebellicoDb('readFromDb', 'select count (zombieIpid) from HostIntelligence where ipAddress=(?)', sourceIp )
@@ -967,33 +936,11 @@ def tcpDiscovery(header,data):
 
 
 # Function designed to sniff out the TCP SYN/ACK portion of the three way handshake to enumerate listing services for a host.
-def synAckDiscovery(header, data):
+def synAckDiscovery(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg):
 
-    # Start to decode the packet and determine the protocol number. If not TCP, return as it does not apply here.
-    ethernetPacket = decoder.decode(data)
-    protocolNumber = ethernetPacket.child().child().protocol
+    # If not TCP, return as it does not apply here.
     if protocolNumber != 6:
         return
-    # Extract relevant data from the ethernet packet.
-    macHdr = ethernetPacket
-    sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
-    destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
-    ipHdr = ethernetPacket.child()
-    tcpHdr = ipHdr.child()
-    sourceIp = ipHdr.get_ip_src()
-    sourcePort = tcpHdr.get_th_sport()
-    destIp = ipHdr.get_ip_dst()
-    destPort = tcpHdr.get_th_dport()
-
-    # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
-    tcpSyn = ethernetPacket.child().child().get_SYN()
-    tcpAck = ethernetPacket.child().child().get_ACK()
-    tcpEce = ethernetPacket.child().child().get_ECE()
-    tcpCwr = ethernetPacket.child().child().get_CWR()
-    tcpFin = ethernetPacket.child().child().get_FIN()
-    tcpPsh = ethernetPacket.child().child().get_PSH()
-    tcpRst = ethernetPacket.child().child().get_RST()
-    tcpUrg = ethernetPacket.child().child().get_URG()
 
     # Work to determine if these are known internal IP addresses based upon RFC1918 or user supplied data.
     (sourceMatch, destMatch) = ( checkInternalAddress(sourceIp), checkInternalAddress(destIp) )
@@ -1049,34 +996,13 @@ def synAckDiscovery(header, data):
         prebellicoLog(("-=-Trust Intelligence-=-\nThe following host(s) are permitted to talk to %s: %s.") % (sourceIp, destIp))
     return
 
-# Function to process some potential from of NTLM authentication
-def ntlmAuthDiscovery(header,data):
 
-    # Start to decode the packet and determine the protocol number. If not TCP, return as it does not apply here.
-    ethernetPacket = decoder.decode(data)
-    protocolNumber = ethernetPacket.child().child().protocol
+# Function to process some potential from of NTLM authentication
+def ntlmAuthDiscovery(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg):
+
+    # If not TCP, return as it does not apply here.
     if protocolNumber != 6:
         return
-    # Extract relevant data from the ethernet packet.
-    macHdr = ethernetPacket
-    sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
-    destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
-    ipHdr = ethernetPacket.child()
-    tcpHdr = ipHdr.child()
-    sourceIp = ipHdr.get_ip_src()
-    sourcePort = tcpHdr.get_th_sport()
-    destIp = ipHdr.get_ip_dst()
-    destPort = tcpHdr.get_th_dport()
-
-    # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
-    tcpSyn = ethernetPacket.child().child().get_SYN()
-    tcpAck = ethernetPacket.child().child().get_ACK()
-    tcpEce = ethernetPacket.child().child().get_ECE()
-    tcpCwr = ethernetPacket.child().child().get_CWR()
-    tcpFin = ethernetPacket.child().child().get_FIN()
-    tcpPsh = ethernetPacket.child().child().get_PSH()
-    tcpRst = ethernetPacket.child().child().get_RST()
-    tcpUrg = ethernetPacket.child().child().get_URG()
 
     # Define regex designed to identify potential NTLM authentication
     httpNtlm2Regex = re.findall('(?<=WWW-Authenticate: NTLM )[^\r]*', data)
@@ -1094,33 +1020,11 @@ def ntlmAuthDiscovery(header,data):
 
 
 # Function to potential clear text credentials from TCP packets
-def processClearTextCreds(header,data):
+def processClearTextCreds(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg):
 
-    # Start to decode the packet and determine the protocol number. If not TCP, return as it does not apply here.
-    ethernetPacket = decoder.decode(data)
-    protocolNumber = ethernetPacket.child().child().protocol
+    # If not TCP, return as it does not apply here.
     if protocolNumber != 6:
         return
-    # Extract relevant data from the ethernet packet.
-    macHdr = ethernetPacket
-    sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
-    destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
-    ipHdr = ethernetPacket.child()
-    tcpHdr = ipHdr.child()
-    sourceIp = ipHdr.get_ip_src()
-    sourcePort = tcpHdr.get_th_sport()
-    destIp = ipHdr.get_ip_dst()
-    destPort = tcpHdr.get_th_dport()
-
-    # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
-    tcpSyn = ethernetPacket.child().child().get_SYN()
-    tcpAck = ethernetPacket.child().child().get_ACK()
-    tcpEce = ethernetPacket.child().child().get_ECE()
-    tcpCwr = ethernetPacket.child().child().get_CWR()
-    tcpFin = ethernetPacket.child().child().get_FIN()
-    tcpPsh = ethernetPacket.child().child().get_PSH()
-    tcpRst = ethernetPacket.child().child().get_RST()
-    tcpUrg = ethernetPacket.child().child().get_URG()
 
     # Define a basic regex designed to capture the most basic authentication prompts disclosed in a TCP session.
     clearTextUsernameRegex = re.findall('(?<=USER )[^\r]*', data, re.IGNORECASE)
@@ -1136,33 +1040,11 @@ def processClearTextCreds(header,data):
 
 
 # Function to process potential basic authentication from TCP packets
-def processBasicAuthCreds(header,data):
+def processBasicAuthCreds(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg):
 
-    # Start to decode the packet and determine the protocol number. If not TCP, return as it does not apply here.
-    ethernetPacket = decoder.decode(data)
-    protocolNumber = ethernetPacket.child().child().protocol
+    # If not TCP, return as it does not apply here.
     if protocolNumber != 6:
         return
-    # Extract relevant data from the ethernet packet.
-    macHdr = ethernetPacket
-    sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
-    destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
-    ipHdr = ethernetPacket.child()
-    tcpHdr = ipHdr.child()
-    sourceIp = ipHdr.get_ip_src()
-    sourcePort = tcpHdr.get_th_sport()
-    destIp = ipHdr.get_ip_dst()
-    destPort = tcpHdr.get_th_dport()
-
-    # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
-    tcpSyn = ethernetPacket.child().child().get_SYN()
-    tcpAck = ethernetPacket.child().child().get_ACK()
-    tcpEce = ethernetPacket.child().child().get_ECE()
-    tcpCwr = ethernetPacket.child().child().get_CWR()
-    tcpFin = ethernetPacket.child().child().get_FIN()
-    tcpPsh = ethernetPacket.child().child().get_PSH()
-    tcpRst = ethernetPacket.child().child().get_RST()
-    tcpUrg = ethernetPacket.child().child().get_URG()
 
     # Perform regex to see if this packet does have a basic authentication header in it
     basicAuthRegex = re.findall('(?<=Authorization: Basic )[^\n]*', data)
@@ -1173,33 +1055,11 @@ def processBasicAuthCreds(header,data):
 
 
 # Function to attempt to extract authentication information from SMB read operations.
-def smbAuthDiscovery(header,data):
+def smbAuthDiscovery(ethernetPacket,protocolNumber,header,data,macHdr,sourceMac,destMac,ipHdr,tcpHdr,sourceIp,sourcePort,destIp,destPort,tcpSyn,tcpAck,tcpEce,tcpCwr,tcpFin,tcpPsh,tcpRst,tcpUrg):
 
-    # Start to decode the packet and determine the protocol number. If not TCP, return as it does not apply here.
-    ethernetPacket = decoder.decode(data)
-    protocolNumber = ethernetPacket.child().child().protocol
+    # If not TCP, return as it does not apply here.
     if protocolNumber != 6:
         return
-    # Extract relevant data from the ethernet packet.
-    macHdr = ethernetPacket
-    sourceMac = macHdr.as_eth_addr(macHdr.get_ether_shost())
-    destMac = macHdr.as_eth_addr(macHdr.get_ether_dhost())
-    ipHdr = ethernetPacket.child()
-    tcpHdr = ipHdr.child()
-    sourceIp = ipHdr.get_ip_src()
-    sourcePort = tcpHdr.get_th_sport()
-    destIp = ipHdr.get_ip_dst()
-    destPort = tcpHdr.get_th_dport()
-
-    # Pull TCP flags to determine TCP session state so that we can determine what TCP method to call for intel.
-    tcpSyn = ethernetPacket.child().child().get_SYN()
-    tcpAck = ethernetPacket.child().child().get_ACK()
-    tcpEce = ethernetPacket.child().child().get_ECE()
-    tcpCwr = ethernetPacket.child().child().get_CWR()
-    tcpFin = ethernetPacket.child().child().get_FIN()
-    tcpPsh = ethernetPacket.child().child().get_PSH()
-    tcpRst = ethernetPacket.child().child().get_RST()
-    tcpUrg = ethernetPacket.child().child().get_URG()
 
     if sourcePort != 445:
         return
