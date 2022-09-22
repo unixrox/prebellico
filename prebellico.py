@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 """
- Prebellico v1.8.1 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
+ Prebellico v1.8.2 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
  Written by William Suthers
  Shout out to the Impacket and pcapy teams - you make this easy.
  Shout out to all those before me, those who invested in me, those who stand with me, and those who have yet to join our cause.
