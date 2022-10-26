@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 """
- Prebellico v1.8.2 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
+ Prebellico v1.8.3 - 100% Passive Pre-Engagement and Post Compromise Network Reconnaissance Tool
  Written by William Suthers
  Shout out to the Impacket and pcapy teams - you make this easy.
  Shout out to all those before me, those who invested in me, those who stand with me, and those who have yet to join our cause.
@@ -648,9 +648,9 @@ def udpDiscovery(ethernetPacket,protocolNumber,macHdr,sourceMac,destMac,ipHdr,so
         # Ran into a python bug that pwned me arse, so I rewrote this trying to solve the problem, which resulted in bloated code. I should work to trim this down.
         knownHostnameString = prebellicoDb('readFromDb', 'select hostname from HostIntelligence where ipAddress = (?)', sourceIp)
         knownHostDescriptionString = prebellicoDb('readFromDb', 'select hostDescription from HostIntelligence where ipAddress = (?)', sourceIp)
-        mailSlotMatch = re.search("\\MAILSLOT.*BROWSE", ethernetPacket.child().child().child().get_buffer_as_string(), re.MULTILINE)
+        mailSlotMatch = re.search("\\\\MAILSLOT.*BROWSE", ethernetPacket.child().child().child().get_buffer_as_string().decode('latin-1'), re.MULTILINE)
         if mailSlotMatch:
-            mailSlotString = re.findall("(?<=\n\x00)(?!\x03\x90\x00)[\w\-\!\@\$\%\^\&\(\)\+\=\[\]\{\}\'\;\~\`]{1,15}(?=\x00)|(?<=\x0f\x01U\xaa)(?!\x03\x90\x00)[\w\s\:\-\=\_\-\+\[\]\{\}\!\@\#\$\%\^\&\*\(\)\'\"\:\;\~\`]+(?=\x00)", ethernetPacket.child().child().child().get_buffer_as_string(), re.MULTILINE)
+            mailSlotString = re.findall("(?<=\n\x00)(?!\x03\x90\x00)[\w\-\!\@\$\%\^\&\(\)\+\=\[\]\{\}\'\;\~\`]{1,15}(?=\x00)|(?<=\x0f\x01U\xaa)(?!\x03\x90\x00)[\w\s\:\-\=\_\-\+\[\]\{\}\!\@\#\$\%\^\&\*\(\)\'\"\:\;\~\`]+(?=\x00)", ethernetPacket.child().child().child().get_buffer_as_string().decode('latin-1'), re.MULTILINE)
             if len(mailSlotString) == 1:
                 if knownHostnameString[0] != mailSlotString[0]:
                     prebellicoLog(('-=-SMB Recon-=-\nThe hostname for \'%s\' is \'%s\'.') % ( sourceIp, mailSlotString[0] ))
@@ -1701,4 +1701,6 @@ decoder = ImpactDecoder.EthDecoder()
 time.sleep(1)
 
 # Call the inspectProto function to determine protocol support.
-sniff.loop(0, inspectProto)
+while True:
+    (header, data) = sniff.next()
+    inspectProto(header,data)
