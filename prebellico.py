@@ -668,7 +668,7 @@ def udpDiscovery(ethernetPacket,protocolNumber,macHdr,sourceMac,destMac,ipHdr,so
     if ( udpSourcePort == 1985 ):
         hsrpTempData = ethernetPacket.child().child().child().get_buffer_as_string()
         hsrpPacketFilterRegex = re.compile('[a-zA-Z0-9*].*')# Regex to yank data within HSRP string data.
-        hsrpTempData=hsrpPacketFilterRegex.findall(hsrpTempData)
+        hsrpTempData=hsrpPacketFilterRegex.findall(hsrpTempData.decode('latin-1'))
 
         #Trying to work past a bug here for various types of HSRP packets. To manage this I have adopted a try/except-pass method to manage these issues. Additionally, this doesn't really work to pull the hashed value, but manages a crash Need to resolve this issue somehow.
         try:
