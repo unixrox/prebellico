@@ -158,10 +158,10 @@ def prebellicoLog(data):
 
 # Because everyone needs a cool banner - shown by default unless someone asks for it to be disabled.
 def prebellicoBanner():
-    banner = """
+    banner = r"""
        ___          __       _____
       / _ \_______ / /  ___ / / (_)______
-     / ___/ __/ -_) _ \/ -_) / / / __/ _ \\
+     / ___/ __/ -_) _ \/ -_) / / / __/ _ \
     /_/  /_/  \__/___/ \__/_/_/_/\__/\___/
     """
     print(banner)
@@ -173,7 +173,7 @@ def prebellicoBanner():
 # Function to validate if an IP address is associated with an RFC1918 address or a known non-RFC1918 address space that a target site uses internally.
 def checkInternalAddress(networkIp):
     with lockCheckInternalAddress:
-        rfc1918addressregex = re.compile('^(127\.)|(192\.168\.)|(10\.)|(172\.1[6-9]\.)|(172\.2[0-9]\.)|(172\.3[0-1]\.)')#  Add this when IPv6 is ready: |(::1$)|([fF][cCdD])')
+        rfc1918addressregex = re.compile(r'^(127\.)|(192\.168\.)|(10\.)|(172\.1[6-9]\.)|(172\.2[0-9]\.)|(172\.3[0-1]\.)')#  Add this when IPv6 is ready: |(::1$)|([fF][cCdD])')
         networkMatch = rfc1918addressregex.match(networkIp)
         return(networkMatch)
 
@@ -650,7 +650,7 @@ def udpDiscovery(ethernetPacket,protocolNumber,macHdr,sourceMac,destMac,ipHdr,so
         knownHostDescriptionString = prebellicoDb('readFromDb', 'select hostDescription from HostIntelligence where ipAddress = (?)', sourceIp)
         mailSlotMatch = re.search("\\\\MAILSLOT.*BROWSE", ethernetPacket.child().child().child().get_buffer_as_string().decode('latin-1'), re.MULTILINE)
         if mailSlotMatch:
-            mailSlotString = re.findall("(?<=\n\x00)(?!\x03\x90\x00)[\w\-\!\@\$\%\^\&\(\)\+\=\[\]\{\}\'\;\~\`]{1,15}(?=\x00)|(?<=\x0f\x01U\xaa)(?!\x03\x90\x00)[\w\s\:\-\=\_\-\+\[\]\{\}\!\@\#\$\%\^\&\*\(\)\'\"\:\;\~\`]+(?=\x00)", ethernetPacket.child().child().child().get_buffer_as_string().decode('latin-1'), re.MULTILINE)
+            mailSlotString = re.findall(r"(?<=\n\x00)(?!\x03\x90\x00)[\w\-\!\@\$\%\^\&\(\)\+\=\[\]\{\}\'\;\~\`]{1,15}(?=\x00)|(?<=\x0f\x01U\xaa)(?!\x03\x90\x00)[\w\s\:\-\=\_\-\+\[\]\{\}\!\@\#\$\%\^\&\*\(\)\'\"\:\;\~\`]+(?=\x00)", ethernetPacket.child().child().child().get_buffer_as_string().decode('latin-1'), re.MULTILINE)
             if len(mailSlotString) == 1:
                 if knownHostnameString[0] != mailSlotString[0]:
                     prebellicoLog(('-=-SMB Recon-=-\nThe hostname for \'%s\' is \'%s\'.') % ( sourceIp, mailSlotString[0] ))
@@ -1022,7 +1022,7 @@ def processClearTextCreds(ethernetPacket,protocolNumber,header,data,macHdr,sourc
     # Define a basic regex designed to capture the most basic authentication prompts disclosed in a TCP session.
     clearTextUsernameRegex = re.findall('(?<=USER )[^\r]*', data.decode('latin-1'), re.IGNORECASE)
     clearTextPasswordRegex = re.findall('(?<=PASS )[^\r]*', data.decode('latin-1'), re.IGNORECASE)
-    htmlClearTextRexexFilter = re.findall('<\s*[a-z]*[^>]*>', data.decode('latin-1'), re.IGNORECASE)
+    htmlClearTextRexexFilter = re.findall(r'<\s*[a-z]*[^>]*>', data.decode('latin-1'), re.IGNORECASE)
 
     # If we find a matching instance, report it to the user - note: need to add this to the DB at some point.
     if clearTextUsernameRegex and not htmlClearTextRexexFilter:
